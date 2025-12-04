@@ -42,8 +42,8 @@ float last_error[4] = {0, 0, 0, 0};
 long target_encoder_count[4] = {0, 0, 0, 0};
 
 long downPosition[4] = {0, 0, 0, 0};
-long midPosition[4] = {5000, 5000, 5000, 5000};
-long upPosition[4] = {10000, 10000, 10000, 10000};
+long midPosition[4] = {-3000, 5000, 5000, 5000};
+long upPosition[4] = {-8480, 10000, 10000, 10000};
 
 unsigned long last_time = 0;
 
@@ -112,7 +112,7 @@ void setMotor(int pwm, int motorIndex){
     pwm = 0;
     }
     pwm = constrain(pwm , -255 , 255);
-    digitalWrite(motorPinsEnable[motorIndex], abs(pwm));
+    analogWrite(motorPinsEnable[motorIndex], abs(pwm));
     if (pwm > 0){
         digitalWrite(motorPinsA[motorIndex], 1);
         digitalWrite(motorPinsB[motorIndex], 0);
@@ -126,32 +126,7 @@ void setMotor(int pwm, int motorIndex){
         digitalWrite(motorPinsB[motorIndex], 1);
     }
 }
-void setup(){
-    Serial.begin(115200);
 
-    for(int i=0; i<4; i++){
-        pinMode(encoderPinsA[i], INPUT_PULLUP);
-        pinMode(encoderPinsB[i], INPUT_PULLUP);
-        pinMode(motorPinsA[i], OUTPUT);
-        pinMode(motorPinsB[i], OUTPUT);
-    }
-
-    attachInterrupt(digitalPinToInterrupt(encoderPinsA[0]), encoderA_ISR_0, CHANGE);
-    attachInterrupt(digitalPinToInterrupt(encoderPinsB[0]), encoderB_ISR_0, CHANGE);
-
-    attachInterrupt(digitalPinToInterrupt(encoderPinsA[1]), encoderA_ISR_1, CHANGE);
-    attachInterrupt(digitalPinToInterrupt(encoderPinsB[1]), encoderB_ISR_1, CHANGE);
-
-    attachInterrupt(digitalPinToInterrupt(encoderPinsA[2]), encoderA_ISR_2, CHANGE);
-    attachInterrupt(digitalPinToInterrupt(encoderPinsB[2]), encoderB_ISR_2, CHANGE);
-
-    attachInterrupt(digitalPinToInterrupt(encoderPinsA[3]), encoderA_ISR_3, CHANGE);
-    attachInterrupt(digitalPinToInterrupt(encoderPinsB[3]), encoderB_ISR_3, CHANGE);
-
-    delay(2000);
-    setupServos();
-    last_time = millis()-10;
-}
 void applyPositionPID(float dt, int motorIndex){
     float error = target_encoder_count[motorIndex] - encoderCount[motorIndex];
     integral[motorIndex] += error * dt;
@@ -184,6 +159,32 @@ void khabbi_l_kabecha(){
     right_servo.write(right_servo_pos_0);
 }
 
+void setup(){
+    Serial.begin(115200);
+
+    for(int i=0; i<4; i++){
+        pinMode(encoderPinsA[i], INPUT_PULLUP);
+        pinMode(encoderPinsB[i], INPUT_PULLUP);
+        pinMode(motorPinsA[i], OUTPUT);
+        pinMode(motorPinsB[i], OUTPUT);
+    }
+
+    attachInterrupt(digitalPinToInterrupt(encoderPinsA[0]), encoderA_ISR_0, CHANGE);
+    attachInterrupt(digitalPinToInterrupt(encoderPinsB[0]), encoderB_ISR_0, CHANGE);
+
+    attachInterrupt(digitalPinToInterrupt(encoderPinsA[1]), encoderA_ISR_1, CHANGE);
+    attachInterrupt(digitalPinToInterrupt(encoderPinsB[1]), encoderB_ISR_1, CHANGE);
+
+    attachInterrupt(digitalPinToInterrupt(encoderPinsA[2]), encoderA_ISR_2, CHANGE);
+    attachInterrupt(digitalPinToInterrupt(encoderPinsB[2]), encoderB_ISR_2, CHANGE);
+
+    attachInterrupt(digitalPinToInterrupt(encoderPinsA[3]), encoderA_ISR_3, CHANGE);
+    attachInterrupt(digitalPinToInterrupt(encoderPinsB[3]), encoderB_ISR_3, CHANGE);
+
+    delay(2000);
+    setupServos();
+    last_time = millis()-10;
+}
 void loop(){
     unsigned long currentTime = millis();
     float dt = (currentTime - last_time) / 1000.0;
@@ -208,7 +209,4 @@ void loop(){
         }
     }
     delay(10);
-    ba33ed_3la_ba3dhou();
-    estwi_l_crates();
-    delay(1000);
 }
