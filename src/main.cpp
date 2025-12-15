@@ -226,32 +226,78 @@ void setup(){
     delay(2000);
     setupServos();
     
-    // Initialize micro-ROS
+    // Initialize micro-ROS with error checking and retry
+    Serial.println("Waiting for micro-ROS agent...");
+    delay(3000);
+    
     allocator = rcl_get_default_allocator();
-    rclc_support_init(&support, 0, NULL, &allocator);
-    rclc_node_init_default(&node, "esp32_back_node", "", &support);
+    
+    // Retry connection up to 10 times
+    rcl_ret_t ret;
+    int retry_count = 0;
+    do {
+        ret = rclc_support_init(&support, 0, NULL, &allocator);
+        if (ret != RCL_RET_OK) {
+            Serial.println("Failed to connect to micro-ROS agent, retrying...");
+            delay(1000);
+            retry_count++;
+        }
+    } while (ret != RCL_RET_OK && retry_count < 10);
+    
+    if (ret != RCL_RET_OK) {
+        Serial.println("ERROR: Failed to initialize micro-ROS!");
+        while(1) { delay(100); }
+    }
+    Serial.println("✓ Support initialized");
+    
+    ret = rclc_node_init_default(&node, "esp32_back_node", "", &support);
+    if (ret != RCL_RET_OK) {
+        Serial.println("ERROR: Failed to init node!");
+        while(1) { delay(100); }
+    }
+    Serial.println("✓ Node created");
 
     // Create subscriptions
-    rclc_subscription_init_default(
+    ret = rclc_subscription_init_default(
         &n20_subscriber,
         &node,
         ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
         "/backward/n20");
+    if (ret != RCL_RET_OK) {
+        Serial.println("ERROR: Failed to create n20 subscription!");
+    } else {
+        Serial.println("✓ N20 subscription created");
+    }
 
-    rclc_subscription_init_default(
+    ret = rclc_subscription_init_default(
         &kabech_subscriber,
         &node,
         ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
         "/backward/kabech");
+    if (ret != RCL_RET_OK) {
+        Serial.println("ERROR: Failed to create kabech subscription!");
+    } else {
+        Serial.println("✓ Kabech subscription created");
+    }
 
-    rclc_subscription_init_default(
+    ret = rclc_subscription_init_default(
         &dawer_subscriber,
         &node,
         ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
         "/backward/dawer");
+    if (ret != RCL_RET_OK) {
+        Serial.println("ERROR: Failed to create dawer subscription!");
+    } else {
+        Serial.println("✓ Dawer subscription created");
+    }
 
     // Create executor
-    rclc_executor_init(&executor, &support.context, 3, &allocator);
+    ret = rclc_executor_init(&executor, &support.context, 3, &allocator);
+    if (ret != RCL_RET_OK) {
+        Serial.println("ERROR: Failed to init executor!");
+    } else {
+        Serial.println("✓ Executor initialized");
+    };
     rclc_executor_add_subscription(&executor, &n20_subscriber, &n20_msg,
                                     &n20_callback, ON_NEW_DATA);
     rclc_executor_add_subscription(&executor, &kabech_subscriber, &kabech_msg,
@@ -259,6 +305,7 @@ void setup(){
     rclc_executor_add_subscription(&executor, &dawer_subscriber, &dawer_msg,
                                     &dawer_callback, ON_NEW_DATA);
     
+    Serial.println("✓✓✓ ESP32 Back Node Ready! ✓✓✓");
     last_time = millis()-10;
 }
 void loop(){
