@@ -263,7 +263,7 @@ void setup(){
         &n20_subscriber,
         &node,
         ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
-        "/backward/n20");
+        "/back/n20");
     if (ret != RCL_RET_OK) {
         Serial.println("ERROR: Failed to create n20 subscription!");
     } else {
@@ -274,7 +274,7 @@ void setup(){
         &kabech_subscriber,
         &node,
         ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
-        "/backward/kabech");
+        "/back/kabech");
     if (ret != RCL_RET_OK) {
         Serial.println("ERROR: Failed to create kabech subscription!");
     } else {
@@ -285,7 +285,7 @@ void setup(){
         &dawer_subscriber,
         &node,
         ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
-        "/backward/dawer");
+        "/back/dawer");
     if (ret != RCL_RET_OK) {
         Serial.println("ERROR: Failed to create dawer subscription!");
     } else {
