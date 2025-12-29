@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #include <ESP32Servo.h>
-#include <micro_ros_platformio.h>
+#include <micro_ros_arduino.h>
 #include <rcl/rcl.h>
 #include <rclc/rclc.h>
 #include <rclc/executor.h>
@@ -203,7 +203,7 @@ void dawer_callback(const void *msgin) {
 void setup(){
     Serial.begin(115200);
     Serial.println("Starting ESP32 back Control Node...");
-    set_microros_serial_transports(Serial);
+    set_microros_transports();
 
     for(int i=0; i<4; i++){
         pinMode(encoderPinsA[i], INPUT_PULLUP);
