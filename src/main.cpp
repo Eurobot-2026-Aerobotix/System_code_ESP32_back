@@ -9,16 +9,18 @@
 #define FAST_READ(pin) ((pin)<32 ? ((GPIO.in >> (pin)) & 0x1) : ((GPIO.in1.val >> ((pin)-32)) & 0x1))
 #define SGN(a) ((a<0)?-1:1)
 
-int motorPinsA[4] = {19, 14, 23, 16};
-int motorPinsB[4] = {2, 4, 5, 15};
+int motorPinsA[4] = {2, 4, 5, 15};
+int motorPinsB[4] = {19, 14, 23, 16};
 int motorPinsEnable[4] = {18, 12, 21, 22};
+// motors are ordered from left to right when looking from above and the ESP32's USB port is facing downwards
 
-int encoderPinsA[4] = {35, 25, 26, 27};
-int encoderPinsB[4] = {32, 34, 39, 36};
+int encoderPinsA[4] = {36, 35, 25, 27};
+int encoderPinsB[4] = {39, 34, 32, 26};
 
-const int middle_servo_pin = 33;
+const int middle_servo_pin = 17;
 const int left_servo_pin = 13;
-const int right_servo_pin = 17;
+const int right_servo_pin = 33;
+
 
 Servo middle_servo;
 Servo left_servo;
