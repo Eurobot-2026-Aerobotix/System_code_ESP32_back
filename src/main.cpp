@@ -15,25 +15,24 @@ int motorPinsB[4] = {16, 23, 14, 19};
 int motorPinsEnable[4] = {22, 21, 12, 18};
 // motors are ordered from right to left when looking from above and the ESP32's USB port is facing downwards
 
-int encoderPinsA[4] = {27, 25, 35, 36};
 int encoderPinsB[4] = {26, 32, 34, 39};
+int encoderPinsA[4] = {27, 25, 35, 36};
 
 const int middle_servo_pin = 17;
 const int left_servo_pin = 13;
 const int right_servo_pin = 33;
 
-
 Servo middle_servo;
 Servo left_servo;
 Servo right_servo;
-int middle_servo_pos_0 = 55;
+int middle_servo_pos_0 = 50;
 int middle_servo_pos_1 = 145;
 
-int left_servo_pos_0 = 50;
-int left_servo_pos_1 = 0;
+int left_servo_pos_0 = 2;
+int left_servo_pos_1 = 145;
 
-int right_servo_pos_0 = 50;
-int right_servo_pos_1 = 0;
+int right_servo_pos_0 = 171;
+int right_servo_pos_1 = 27;
 
 int minPWM[4] = {80, 80, 80, 80};
 
@@ -63,19 +62,24 @@ void idle_service_callback(const void *req, void *res);
 
 volatile long encoderCount[4] = {0, 0, 0, 0};
 
-float kp[4] = {0.8, 0.8, 0.8, 0.8};
-float ki[4] = {5, 5, 5, 5};
-float kd[4] = {0.05, 0.05, 0.05, 0.05};
+float kp[4] = {0.8, 3, 1.5, 3};
+float ki[4] = {5, 5, 3, 1.5};
+float kd[4] = {0.05, 0.1, 0.01, 0.05};
 
 float integral[4] = {0, 0, 0, 0};
 float last_error[4] = {0, 0, 0, 0};
 
 long target_encoder_count[4] = {0, 0, 0, 0};
 
-long downPosition[4] = {0, 0, 0, 0};
-long preparePosition[4] = {-1500, 2500, 2500, 2500};
-long midPosition[4] = {-3000, 5000, 5000, 5000};
-long upPosition[4] = {-8480, 10000, 10000, 10000};
+long upPosition[4] = {0, 0, 0, 0};
+long midPosition[4] = {2250, 2210, 2000, 2080};
+long downPosition[4] = {8250, 8260, 8000, 8200};
+bool motor_homing[4] = {false, false, false, false};
+int motor_homing_time[4] = {0, 0, 0, 0};
+int saved_encoder_count[4] = {0, 0, 0, 0};
+
+bool going_down = false;
+int before_going_up_encoder_count[4] = {0, 0, 0, 0};
 
 unsigned long last_time = 0;
 
@@ -153,24 +157,43 @@ void setMotor(int pwm, int motorIndex){
         digitalWrite(motorPinsA[motorIndex], 0);
         digitalWrite(motorPinsB[motorIndex], 1);
     }else{
-        digitalWrite(motorPinsEnable[motorIndex], 255);
+        digitalWrite(motorPinsEnable[motorIndex], 1);
         digitalWrite(motorPinsA[motorIndex], 1);
         digitalWrite(motorPinsB[motorIndex], 1);
     }
 }
 
 void applyPositionPID(float dt, int motorIndex){
-    float error = target_encoder_count[motorIndex] - encoderCount[motorIndex];
-    integral[motorIndex] += error * dt;
-    if(SGN(last_error[motorIndex]) != SGN(error)){
-      integral[motorIndex] = 0;
-    }
-    integral[motorIndex] = constrain(integral[motorIndex], -500.0f, 500.0f);
-    float derivative = (error - last_error[motorIndex]) / dt;
-    float speedCmd = kp[motorIndex] * error + ki[motorIndex] * integral[motorIndex] + kd[motorIndex] * derivative;
+    if(target_encoder_count[motorIndex] != upPosition[motorIndex] ){
+        float error = target_encoder_count[motorIndex] - encoderCount[motorIndex];
+        integral[motorIndex] += error * dt;
+        if(SGN(last_error[motorIndex]) != SGN(error)){
+        integral[motorIndex] = 0;
+        }
+        integral[motorIndex] = constrain(integral[motorIndex], -500.0f, 500.0f);
+        float derivative = (error - last_error[motorIndex]) / dt;
+        float speedCmd = kp[motorIndex] * error + ki[motorIndex] * integral[motorIndex] + kd[motorIndex] * derivative;
 
-    last_error[motorIndex] = error;
-    setMotor((int)speedCmd, motorIndex);
+        last_error[motorIndex] = error;
+        setMotor((int)speedCmd, motorIndex);
+    }else{
+        if (!motor_homing[motorIndex]){
+            setMotor(-255, motorIndex);
+            motor_homing[motorIndex] = true;
+            saved_encoder_count[motorIndex] = encoderCount[motorIndex];
+            motor_homing_time[motorIndex] = millis();
+        }else if (millis() - motor_homing_time[motorIndex] > 100){
+            if (abs(encoderCount[motorIndex] - saved_encoder_count[motorIndex]) == 0){
+                motor_homing[motorIndex] = false;
+                setMotor(0, motorIndex);
+                encoderCount[motorIndex] = upPosition[motorIndex];
+                target_encoder_count[motorIndex] = upPosition[motorIndex] + 10;
+            }else{
+                saved_encoder_count[motorIndex] = encoderCount[motorIndex];
+            }
+            motor_homing_time[motorIndex] = millis();
+        }
+    }
 }
 
 void ba33ed_3la_ba3dhou(){
@@ -190,26 +213,110 @@ void khabbi_l_kabecha(){
     left_servo.write(left_servo_pos_0);
     right_servo.write(right_servo_pos_0);
 }
-
+void apply_command(String command){
+    if (command[0] == 'u' || command[0] == 'm' || command[0] == 'd'){
+        for(int i=0; i<4; i++){
+            if (command[i] == 'u'){
+                target_encoder_count[i] = upPosition[i];
+            }else if (command[i] == 'm'){
+                target_encoder_count[i] = midPosition[i];
+            }else if (command[i] == 'd'){
+                target_encoder_count[i] = downPosition[i];
+            }
+        }
+    }else{
+        target_encoder_count[(int)command[0]-48] = command.substring(1).toInt();
+    }
+}
 // Callback function for /forward/n20 topic
 void n20_callback(const void *msgin) {
     const std_msgs__msg__Int32 *msg = (const std_msgs__msg__Int32 *)msgin;
     int value = msg->data;
-
+    String command = "dddd";
+    going_down = true;
+    if (value <16){
+        going_down = false;
+        for (int i=0; i<4; i++){
+            before_going_up_encoder_count[i] = encoderCount[i];
+        }
+        for(int i=0; i<4; i++){
+            if (value & (1 << (3 - i))){
+                command[i] = 'u';
+            }else{
+                command[i] = 'm';
+            }
+        }
+    }
+    apply_command(command);
 }
 
 // Callback function for /forward/kabech topic
 void kabech_callback(const void *msgin) {
     const std_msgs__msg__Int32 *msg = (const std_msgs__msg__Int32 *)msgin;
     int value = msg->data;
+    if (value == 1){
+        estwi_l_crates();
+    }else{
+        khabbi_l_kabecha();
+    }
 }
 
 // Callback function for /forward/dawer topic
 void dawer_callback(const void *msgin) {
     const std_msgs__msg__Int32 *msg = (const std_msgs__msg__Int32 *)msgin;
     int value = msg->data;
+    if (value == 1){
+        ba33ed_3la_ba3dhou();
+    }else{
+        lemm_l_ba3dhou();
+    }
 }
 
+void find_home(){
+    for(int i=0; i<4; i++){
+        setMotor(-255, i);
+    }
+    int motors_at_home = 0;
+    int saved_encoder_counts[4] = {encoderCount[0], encoderCount[1], encoderCount[2], encoderCount[3]};
+    bool motor_homed[4] = {false, false, false, false};
+    delay(500);
+    while(motors_at_home < 4){
+        delay(200);
+        for(int i=0; i<4; i++){
+            if (!motor_homed[i] && abs(encoderCount[i] - saved_encoder_counts[i]) == 0){
+                motors_at_home++;
+                motor_homed[i] = true;
+                setMotor(0, i);
+                encoderCount[i] = upPosition[i];
+                Serial.println("Motor " + String(i) + " homed.");
+            }else{
+                saved_encoder_counts[i] = encoderCount[i];
+            }
+        }
+    }
+}
+
+bool is_idle(){
+    bool idle = true;
+    for(int i=0; i<4; i++){
+        if (abs(target_encoder_count[i] - encoderCount[i]) > 35){
+            idle = false;
+            break;
+        }
+    }
+    return idle;
+}
+
+bool cleared_ground(){
+    bool clear = true;
+    for(int i=0; i<4; i++){
+        if (abs(encoderCount[i] - before_going_up_encoder_count[i]) < 2000){
+            clear = false;
+            break;
+        }
+    }
+    return clear;
+}
 // Service callback for /back/isIDLE service
 void idle_service_callback(const void *req, void *res) {
     std_srvs__srv__Trigger_Response *response = (std_srvs__srv__Trigger_Response *)res;
@@ -218,13 +325,40 @@ void idle_service_callback(const void *req, void *res) {
     response->success = isIDLE;
     
     // Set response message
-    if (isIDLE) {
+    if ( ( going_down && is_idle() ) || (!going_down && cleared_ground())) {
         strcpy(response->message.data, "System is IDLE");
     } else {
         strcpy(response->message.data, "System is BUSY");
     }
     response->message.size = strlen(response->message.data);
     response->message.capacity = response->message.size + 1;
+}
+
+void test_with_serial(){
+    if (Serial.available() > 0) {
+        String command = Serial.readStringUntil('\n');
+        if (command[0] == 'u' || command[0] == 'm' || command[0] == 'd'){
+            for(int i=0; i<4; i++){
+                if (command[i] == 'u'){
+                    target_encoder_count[i] = upPosition[i];
+                }else if (command[i] == 'm'){
+                    target_encoder_count[i] = midPosition[i];
+                }else if (command[i] == 'd'){
+                    target_encoder_count[i] = downPosition[i];
+                }
+            }
+        }else if (command[0] == 'k'){
+            estwi_l_crates();
+        }else if (command[0] == 'l'){
+            khabbi_l_kabecha();
+        }else if (command[0] == 'b'){
+            ba33ed_3la_ba3dhou();
+        }else if (command[0] == 's'){
+            lemm_l_ba3dhou();
+        }else{
+            target_encoder_count[(int)command[0]-48] = command.substring(1).toInt();
+        }
+    }
 }
 
 void setup(){
@@ -349,23 +483,13 @@ void setup(){
     
     Serial.println("✓✓✓ ESP32 Back Node Ready! ✓✓✓");
     last_time = millis()-10;
-}
-void apply_command(String command){
-    if (command[0] == 'u' || command[0] == 'm' || command[0] == 'd' || command[0] == 'p'){
-        for(int i=0; i<4; i++){
-            if (command[i] == 'u'){
-                target_encoder_count[i] = upPosition[i];
-            }else if (command[i] == 'm'){
-                target_encoder_count[i] = midPosition[i];
-            }else if (command[i] == 'd'){
-                target_encoder_count[i] = downPosition[i];
-            }else if (command[i] == 'p'){
-                target_encoder_count[i] = preparePosition[i];
-            }
-        }
-    }else{
-        target_encoder_count[(int)command[0]-48] = command.substring(1).toInt();
+    Serial.println("tryna home");
+    find_home();
+    Serial.println("Homing complete.");
+    for(int i=0; i<4; i++){
+        setMotor(0, i);
     }
+    apply_command("mmmm");
 }
 void loop(){
     unsigned long currentTime = millis();
@@ -379,85 +503,4 @@ void loop(){
         applyPositionPID(dt, i);
     }
     delay(10);
-
-    if (Serial.available()) {
-        for (int i=0; i<4; i++){
-            setMotor(0, i);
-        }
-        String line = Serial.readStringUntil('\n');
-        line.trim();
-        if (line.length() > 0) {
-            // make a lower-case copy for command parsing
-            String lower = line;
-            lower.toLowerCase();
-
-            // If command starts with 0-3 -> set single motor target (format: "01234" or "0 1234")
-            if (lower[0] >= '0' && lower[0] <= '3') {
-                // allow both "0 1234" and "01234" forms
-                lower.replace(" ", "");
-                apply_command(lower);
-                Serial.print("Motor ");
-                Serial.print((int)(lower[0]-'0'));
-                Serial.print(" target set to ");
-                Serial.println(lower.substring(1));
-            }
-            // If command starts with preset letters u/m/d/p -> reuse apply_command for group presets
-            else if (lower[0] == 'u' || lower[0] == 'm' || lower[0] == 'd' || lower[0] == 'p') {
-                apply_command(lower);
-                Serial.print("Preset command applied: ");
-                Serial.println(lower);
-            }
-            // Servo commands:
-            // Supported forms:
-            //   "servo m 90" or "s m 90" or "servo middle 90"
-            //   "servo l 45", "servo r 20"
-            else {
-                // split into up to 3 tokens
-                int p1 = lower.indexOf(' ');
-                String cmd = (p1 == -1) ? lower : lower.substring(0, p1);
-                String token1 = "";
-                String token2 = "";
-                if (p1 != -1) {
-                    int p2 = lower.indexOf(' ', p1 + 1);
-                    if (p2 == -1) {
-                        token1 = lower.substring(p1 + 1);
-                    } else {
-                        token1 = lower.substring(p1 + 1, p2);
-                        token2 = lower.substring(p2 + 1);
-                    }
-                }
-
-                if (cmd == "s" || cmd == "servo") {
-                    if (token1.length() == 0 || token2.length() == 0) {
-                        Serial.println("ERR: servo command requires id and angle (e.g. 'servo m 90')");
-                    } else {
-                        int angle = token2.toInt();
-                        angle = constrain(angle, 0, 180);
-                        if (token1 == "m" || token1 == "middle") {
-                            middle_servo.write(angle);
-                            Serial.print("Middle servo -> ");
-                            Serial.println(angle);
-                        } else if (token1 == "l" || token1 == "left") {
-                            left_servo.write(angle);
-                            Serial.print("Left servo -> ");
-                            Serial.println(angle);
-                        } else if (token1 == "r" || token1 == "right") {
-                            right_servo.write(angle);
-                            Serial.print("Right servo -> ");
-                            Serial.println(angle);
-                        } else {
-                            Serial.println("ERR: unknown servo id (use m/l/r or middle/left/right)");
-                        }
-                    }
-                } else if (cmd == "help") {
-                    Serial.println("Commands:");
-                    Serial.println("  <0-3><value>     Set motor target, e.g. 01234 or '0 1234'");
-                    Serial.println("  u|m|d|p          Apply preset for all motors (up/mid/down/prepare)");
-                    Serial.println("  servo <m|l|r> <angle>  Set servo angle 0-180");
-                } else {
-                    Serial.println("ERR: unknown command. Send 'help' for usage.");
-                }
-            }
-        }
-    }
 }
