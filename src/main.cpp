@@ -232,6 +232,7 @@ void apply_command(String command){
 void n20_callback(const void *msgin) {
     const std_msgs__msg__Int32 *msg = (const std_msgs__msg__Int32 *)msgin;
     int value = msg->data;
+    // if value is more that 1111 all tenticles will go down, else 1 means up and 0 means middle, ordered from MSB to LSB w lezem na7kou fi esque bech nroddou combinaision kima dudu possible 
     String command = "dddd";
     going_down = true;
     if (value <16){
