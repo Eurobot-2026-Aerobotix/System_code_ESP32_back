@@ -9,13 +9,13 @@
 #define FAST_READ(pin) ((pin)<32 ? ((GPIO.in >> (pin)) & 0x1) : ((GPIO.in1.val >> ((pin)-32)) & 0x1))
 #define SGN(a) ((a<0)?-1:1)
 
-int motorPinsA[4] = {2, 4, 5, 15};
-int motorPinsB[4] = {19, 14, 23, 16};
-int motorPinsEnable[4] = {18, 12, 21, 22};
-// motors are ordered from left to right when looking from above and the ESP32's USB port is facing downwards
+int motorPinsA[4] = {15, 5, 4, 2};
+int motorPinsB[4] = {16, 23, 14, 19};
+int motorPinsEnable[4] = {22, 21, 12, 18};
+// motors are ordered from right to left when looking from above and the ESP32's USB port is facing downwards
 
-int encoderPinsA[4] = {36, 35, 25, 27};
-int encoderPinsB[4] = {39, 34, 32, 26};
+int encoderPinsA[4] = {27, 25, 35, 36};
+int encoderPinsB[4] = {26, 32, 34, 39};
 
 const int middle_servo_pin = 17;
 const int left_servo_pin = 13;
@@ -25,14 +25,14 @@ const int right_servo_pin = 33;
 Servo middle_servo;
 Servo left_servo;
 Servo right_servo;
-int middle_servo_pos_0 = 0;
-int middle_servo_pos_1 = 180;
+int middle_servo_pos_0 = 55;
+int middle_servo_pos_1 = 145;
 
-int left_servo_pos_0 = 180;
+int left_servo_pos_0 = 50;
 int left_servo_pos_1 = 0;
 
-int right_servo_pos_0 = 0;
-int right_servo_pos_1 = 20;
+int right_servo_pos_0 = 50;
+int right_servo_pos_1 = 0;
 
 int minPWM[4] = {80, 80, 80, 80};
 
@@ -340,4 +340,85 @@ void loop(){
         applyPositionPID(dt, i);
     }
     delay(10);
+
+    if (Serial.available()) {
+        for (int i=0; i<4; i++){
+            setMotor(0, i);
+        }
+        String line = Serial.readStringUntil('\n');
+        line.trim();
+        if (line.length() > 0) {
+            // make a lower-case copy for command parsing
+            String lower = line;
+            lower.toLowerCase();
+
+            // If command starts with 0-3 -> set single motor target (format: "01234" or "0 1234")
+            if (lower[0] >= '0' && lower[0] <= '3') {
+                // allow both "0 1234" and "01234" forms
+                lower.replace(" ", "");
+                apply_command(lower);
+                Serial.print("Motor ");
+                Serial.print((int)(lower[0]-'0'));
+                Serial.print(" target set to ");
+                Serial.println(lower.substring(1));
+            }
+            // If command starts with preset letters u/m/d/p -> reuse apply_command for group presets
+            else if (lower[0] == 'u' || lower[0] == 'm' || lower[0] == 'd' || lower[0] == 'p') {
+                apply_command(lower);
+                Serial.print("Preset command applied: ");
+                Serial.println(lower);
+            }
+            // Servo commands:
+            // Supported forms:
+            //   "servo m 90" or "s m 90" or "servo middle 90"
+            //   "servo l 45", "servo r 20"
+            else {
+                // split into up to 3 tokens
+                int p1 = lower.indexOf(' ');
+                String cmd = (p1 == -1) ? lower : lower.substring(0, p1);
+                String token1 = "";
+                String token2 = "";
+                if (p1 != -1) {
+                    int p2 = lower.indexOf(' ', p1 + 1);
+                    if (p2 == -1) {
+                        token1 = lower.substring(p1 + 1);
+                    } else {
+                        token1 = lower.substring(p1 + 1, p2);
+                        token2 = lower.substring(p2 + 1);
+                    }
+                }
+
+                if (cmd == "s" || cmd == "servo") {
+                    if (token1.length() == 0 || token2.length() == 0) {
+                        Serial.println("ERR: servo command requires id and angle (e.g. 'servo m 90')");
+                    } else {
+                        int angle = token2.toInt();
+                        angle = constrain(angle, 0, 180);
+                        if (token1 == "m" || token1 == "middle") {
+                            middle_servo.write(angle);
+                            Serial.print("Middle servo -> ");
+                            Serial.println(angle);
+                        } else if (token1 == "l" || token1 == "left") {
+                            left_servo.write(angle);
+                            Serial.print("Left servo -> ");
+                            Serial.println(angle);
+                        } else if (token1 == "r" || token1 == "right") {
+                            right_servo.write(angle);
+                            Serial.print("Right servo -> ");
+                            Serial.println(angle);
+                        } else {
+                            Serial.println("ERR: unknown servo id (use m/l/r or middle/left/right)");
+                        }
+                    }
+                } else if (cmd == "help") {
+                    Serial.println("Commands:");
+                    Serial.println("  <0-3><value>     Set motor target, e.g. 01234 or '0 1234'");
+                    Serial.println("  u|m|d|p          Apply preset for all motors (up/mid/down/prepare)");
+                    Serial.println("  servo <m|l|r> <angle>  Set servo angle 0-180");
+                } else {
+                    Serial.println("ERR: unknown command. Send 'help' for usage.");
+                }
+            }
+        }
+    }
 }
