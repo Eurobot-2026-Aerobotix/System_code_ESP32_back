@@ -6,9 +6,21 @@
 #include <rclc/executor.h>
 #include <std_msgs/msg/int32.h>
 #include <std_srvs/srv/trigger.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <freertos/semphr.h>
 
 #define FAST_READ(pin) ((pin)<32 ? ((GPIO.in >> (pin)) & 0x1) : ((GPIO.in1.val >> ((pin)-32)) & 0x1))
 #define SGN(a) ((a<0)?-1:1)
+
+// FreeRTOS Task Handles
+TaskHandle_t microROSTaskHandle = NULL;
+TaskHandle_t pidControlTaskHandle = NULL;
+
+// Mutex for shared resources
+SemaphoreHandle_t encoderMutex;
+SemaphoreHandle_t targetMutex;
+SemaphoreHandle_t servoMutex;
 
 int motorPinsA[4] = {15, 5, 4, 2};
 int motorPinsB[4] = {16, 23, 14, 19};
@@ -322,18 +334,27 @@ bool cleared_ground(){
 void idle_service_callback(const void *req, void *res) {
     std_srvs__srv__Trigger_Response *response = (std_srvs__srv__Trigger_Response *)res;
     
-    // Return the isIDLE status
+    // Check if system is idle
+    bool system_idle = (going_down && is_idle()) || (!going_down && cleared_ground());
     
-    // Set response message
-    if ( ( going_down && is_idle() ) || (!going_down && cleared_ground())) {
-        strcpy(response->message.data, "System is IDLE");
-        response->success = true;
+    // Set response success field
+    response->success = system_idle;
+    
+    // Properly allocate and assign the response message using micro-ROS string utilities
+    const char* msg = system_idle ? "System is IDLE" : "System is BUSY";
+    
+    // Allocate memory for the string
+    response->message.data = (char*)malloc(strlen(msg) + 1);
+    if (response->message.data != NULL) {
+        strcpy(response->message.data, msg);
+        response->message.size = strlen(msg);
+        response->message.capacity = strlen(msg) + 1;
     } else {
-        strcpy(response->message.data, "System is BUSY");
-        response->success = false;
+        // Fallback if allocation fails
+        response->message.data = (char*)"";
+        response->message.size = 0;
+        response->message.capacity = 0;
     }
-    response->message.size = strlen(response->message.data);
-    response->message.capacity = response->message.size + 1;
 }
 
 void test_with_serial(){
@@ -363,9 +384,63 @@ void test_with_serial(){
     }
 }
 
+// ============================================================================
+// FreeRTOS Task: micro-ROS Communication
+// ============================================================================
+void microROSTask(void *parameter) {
+    Serial.println("micro-ROS Task started on Core: " + String(xPortGetCoreID()));
+    
+    TickType_t xLastWakeTime = xTaskGetTickCount();
+    const TickType_t xFrequency = pdMS_TO_TICKS(10); // 100Hz
+    
+    while (true) {
+        // Spin micro-ROS executor to handle callbacks
+        rclc_executor_spin_some(&executor, RCL_MS_TO_NS(1));
+        
+        // Delay until next cycle
+        vTaskDelayUntil(&xLastWakeTime, xFrequency);
+    }
+}
+
+// ============================================================================
+// FreeRTOS Task: PID Control Loop
+// ============================================================================
+void pidControlTask(void *parameter) {
+    Serial.println("PID Control Task started on Core: " + String(xPortGetCoreID()));
+    
+    unsigned long last_time = millis();
+    TickType_t xLastWakeTime = xTaskGetTickCount();
+    const TickType_t xFrequency = pdMS_TO_TICKS(10); // 100Hz PID update
+    
+    while (true) {
+        unsigned long currentTime = millis();
+        float dt = (currentTime - last_time) / 1000.0;
+        last_time = currentTime;
+        
+        // Apply PID control for all 4 motors
+        for (int i = 0; i < 4; i++) {
+            applyPositionPID(dt, i);
+        }
+        
+        // Delay until next cycle
+        vTaskDelayUntil(&xLastWakeTime, xFrequency);
+    }
+}
+
 void setup(){
     Serial.begin(115200);
     Serial.println("Starting ESP32 back Control Node...");
+    
+    // Create FreeRTOS mutexes for shared resource protection
+    encoderMutex = xSemaphoreCreateMutex();
+    targetMutex = xSemaphoreCreateMutex();
+    servoMutex = xSemaphoreCreateMutex();
+    
+    if (encoderMutex == NULL || targetMutex == NULL || servoMutex == NULL) {
+        Serial.println("ERROR: Failed to create mutexes!");
+        while(1) { delay(100); }
+    }
+    
     set_microros_transports();
 
     for(int i=0; i<4; i++){
@@ -485,7 +560,6 @@ void setup(){
     
     Serial.println("✓✓✓ ESP32 Back Node Ready! ✓✓✓");
     
-    last_time = millis()-10;
     Serial.println("tryna home");
     find_home();
     Serial.println("Homing complete.");
@@ -493,17 +567,45 @@ void setup(){
         setMotor(0, i);
     }
     apply_command("mmmm");
+    
+    // ========================================================================
+    // Create FreeRTOS Tasks
+    // ========================================================================
+    
+    // Create micro-ROS task on Core 0 (higher priority)
+    xTaskCreatePinnedToCore(
+        microROSTask,           // Task function
+        "microROSTask",         // Task name
+        8192,                   // Stack size (bytes)
+        NULL,                   // Parameters
+        2,                      // Priority (0-24, higher number = higher priority)
+        &microROSTaskHandle,    // Task handle
+        0                       // Core ID (0 or 1)
+    );
+    
+    // Create PID control task on Core 1 (medium priority)
+    xTaskCreatePinnedToCore(
+        pidControlTask,         // Task function
+        "pidControlTask",       // Task name
+        4096,                   // Stack size (bytes)
+        NULL,                   // Parameters
+        1,                      // Priority
+        &pidControlTaskHandle,  // Task handle
+        1                       // Core ID (0 or 1)
+    );
+    
+    if (microROSTaskHandle == NULL || pidControlTaskHandle == NULL) {
+        Serial.println("ERROR: Failed to create FreeRTOS tasks!");
+        while(1) { delay(100); }
+    }
+    
+    Serial.println("✓ FreeRTOS tasks created successfully");
+    Serial.println("✓ micro-ROS task on Core 0 (Priority 2)");
+    Serial.println("✓ PID Control task on Core 1 (Priority 1)");
+    Serial.println("=== System ready ===");
 }
 void loop(){
-    unsigned long currentTime = millis();
-    float dt = (currentTime - last_time) / 1000.0;
-    last_time = currentTime;
-    
-    // Spin micro-ROS executor
-    rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100));
-    
-    for (int i=0; i<4; i++){
-        applyPositionPID(dt, i);
-    }
-    delay(10);
+    // Empty loop - all work is done by FreeRTOS tasks
+    // The loop() function is still called but doesn't need to do anything
+    vTaskDelay(pdMS_TO_TICKS(1000)); // Yield to FreeRTOS scheduler
 }
