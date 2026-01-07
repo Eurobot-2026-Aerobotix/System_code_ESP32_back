@@ -309,10 +309,10 @@ void find_home(){
     }
 }
 
-bool is_idle(){
+bool is_idle(int tolerance=50){
     bool idle = true;
     for(int i=0; i<4; i++){
-        if (abs(target_encoder_count[i] - encoderCount[i]) > 35){
+        if (abs(target_encoder_count[i] - encoderCount[i]) > tolerance){
             idle = false;
             break;
         }
@@ -335,7 +335,7 @@ void idle_service_callback(const void *req, void *res) {
     std_srvs__srv__Trigger_Response *response = (std_srvs__srv__Trigger_Response *)res;
     
     // Check if system is idle
-    bool system_idle = (going_down && is_idle()) || (!going_down && cleared_ground());
+    bool system_idle = (( going_down && is_idle() ) || (!going_down && is_idle(2000)));
     
     // Set response success field
     response->success = system_idle;
