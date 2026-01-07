@@ -187,7 +187,7 @@ void applyPositionPID(float dt, int motorIndex){
                 motor_homing[motorIndex] = false;
                 setMotor(0, motorIndex);
                 encoderCount[motorIndex] = upPosition[motorIndex];
-                target_encoder_count[motorIndex] = upPosition[motorIndex] + 10;
+                target_encoder_count[motorIndex] = upPosition[motorIndex] + 40;
             }else{
                 saved_encoder_count[motorIndex] = encoderCount[motorIndex];
             }
@@ -323,13 +323,14 @@ void idle_service_callback(const void *req, void *res) {
     std_srvs__srv__Trigger_Response *response = (std_srvs__srv__Trigger_Response *)res;
     
     // Return the isIDLE status
-    response->success = isIDLE;
     
     // Set response message
     if ( ( going_down && is_idle() ) || (!going_down && cleared_ground())) {
         strcpy(response->message.data, "System is IDLE");
+        response->success = true;
     } else {
         strcpy(response->message.data, "System is BUSY");
+        response->success = false;
     }
     response->message.size = strlen(response->message.data);
     response->message.capacity = response->message.size + 1;
@@ -389,7 +390,7 @@ void setup(){
     delay(2000);
     setupServos();
     
-    // Initialize micro-ROS with error checking and retry
+    //Initialize micro-ROS with error checking and retry
     Serial.println("Waiting for micro-ROS agent...");
     delay(3000);
     
@@ -483,6 +484,7 @@ void setup(){
                               &idle_service_callback);
     
     Serial.println("✓✓✓ ESP32 Back Node Ready! ✓✓✓");
+    
     last_time = millis()-10;
     Serial.println("tryna home");
     find_home();
