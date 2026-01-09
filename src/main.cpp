@@ -378,15 +378,107 @@ void test_with_serial(){
 void microROSTask(void *parameter) {
     Serial.println("micro-ROS Task started on Core: " + String(xPortGetCoreID()));
     
-    TickType_t xLastWakeTime = xTaskGetTickCount();
-    const TickType_t xFrequency = pdMS_TO_TICKS(10); // 100Hz
+    bool agent_connected = false;
     
     while (true) {
-        // Spin micro-ROS executor to handle callbacks
-        rclc_executor_spin_some(&executor, RCL_MS_TO_NS(1));
+        // If not connected, try to connect to the agent
+        if (!agent_connected) {
+            Serial.println("Attempting to connect to micro-ROS agent...");
+            
+            allocator = rcl_get_default_allocator();
+            rcl_ret_t ret = rclc_support_init(&support, 0, NULL, &allocator);
+            
+            if (ret != RCL_RET_OK) {
+                Serial.println("Failed to connect to micro-ROS agent, retrying in 2 seconds...");
+                vTaskDelay(pdMS_TO_TICKS(2000));
+                continue;
+            }
+            Serial.println("✓ Support initialized");
+            
+            ret = rclc_node_init_default(&node, "esp32_back_node", "", &support);
+            if (ret != RCL_RET_OK) {
+                Serial.println("ERROR: Failed to init node, retrying...");
+                vTaskDelay(pdMS_TO_TICKS(2000));
+                continue;
+            }
+            Serial.println("✓ Node created");
+
+            // Create subscriptions
+            ret = rclc_subscription_init_default(
+                &n20_subscriber,
+                &node,
+                ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
+                "/back/n20");
+            if (ret != RCL_RET_OK) {
+                Serial.println("ERROR: Failed to create n20 subscription!");
+            } else {
+                Serial.println("✓ N20 subscription created");
+            }
+
+            ret = rclc_subscription_init_default(
+                &kabech_subscriber,
+                &node,
+                ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
+                "/back/kabech");
+            if (ret != RCL_RET_OK) {
+                Serial.println("ERROR: Failed to create kabech subscription!");
+            } else {
+                Serial.println("✓ Kabech subscription created");
+            }
+
+            ret = rclc_subscription_init_default(
+                &dawer_subscriber,
+                &node,
+                ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
+                "/back/dawer");
+            if (ret != RCL_RET_OK) {
+                Serial.println("ERROR: Failed to create dawer subscription!");
+            } else {
+                Serial.println("✓ Dawer subscription created");
+            }
+
+            // Create isIDLE service
+            ret = rclc_service_init_default(
+                &idle_service,
+                &node,
+                ROSIDL_GET_SRV_TYPE_SUPPORT(std_srvs, srv, Trigger),
+                "/back/isIDLE");
+            if (ret != RCL_RET_OK) {
+                Serial.println("ERROR: Failed to create isIDLE service!");
+            } else {
+                Serial.println("✓ isIDLE service created");
+            }
+
+            // Create executor (4 handles: 3 subscriptions + 1 service)
+            ret = rclc_executor_init(&executor, &support.context, 4, &allocator);
+            if (ret != RCL_RET_OK) {
+                Serial.println("ERROR: Failed to init executor!");
+                vTaskDelay(pdMS_TO_TICKS(2000));
+                continue;
+            } else {
+                Serial.println("✓ Executor initialized");
+            }
+            
+            rclc_executor_add_subscription(&executor, &n20_subscriber, &n20_msg,
+                                            &n20_callback, ON_NEW_DATA);
+            rclc_executor_add_subscription(&executor, &kabech_subscriber, &kabech_msg,
+                                            &kabech_callback, ON_NEW_DATA);
+            rclc_executor_add_subscription(&executor, &dawer_subscriber, &dawer_msg,
+                                            &dawer_callback, ON_NEW_DATA);
+            rclc_executor_add_service(&executor, &idle_service, &idle_req, &idle_res,
+                                      &idle_service_callback);
+            
+            Serial.println("✓✓✓ ESP32 Back Node Ready! ✓✓✓");
+            agent_connected = true;
+        }
         
-        // Delay until next cycle
-        vTaskDelayUntil(&xLastWakeTime, xFrequency);
+        // If connected, spin the executor
+        if (agent_connected) {
+            rcl_ret_t ret = rclc_executor_spin_some(&executor, RCL_MS_TO_NS(1));
+        }
+        
+        // Small delay
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
 
@@ -429,101 +521,8 @@ void microros_setup(){
     }
     
     set_microros_transports();
-    
-    //Initialize micro-ROS with error checking and retry
-    Serial.println("Waiting for micro-ROS agent...");
-    delay(3000);
-    
-    allocator = rcl_get_default_allocator();
-    
-    // Retry connection up to 10 times
-    rcl_ret_t ret;
-    int retry_count = 0;
-    do {
-        ret = rclc_support_init(&support, 0, NULL, &allocator);
-        if (ret != RCL_RET_OK) {
-            Serial.println("Failed to connect to micro-ROS agent, retrying...");
-            delay(1000);
-            retry_count++;
-        }
-    } while (ret != RCL_RET_OK && retry_count < 10);
-    
-    if (ret != RCL_RET_OK) {
-        Serial.println("ERROR: Failed to initialize micro-ROS!");
-        while(1) { delay(100); }
-    }
-    Serial.println("✓ Support initialized");
-    
-    ret = rclc_node_init_default(&node, "esp32_back_node", "", &support);
-    if (ret != RCL_RET_OK) {
-        Serial.println("ERROR: Failed to init node!");
-        while(1) { delay(100); }
-    }
-    Serial.println("✓ Node created");
-
-    // Create subscriptions
-    ret = rclc_subscription_init_default(
-        &n20_subscriber,
-        &node,
-        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
-        "/back/n20");
-    if (ret != RCL_RET_OK) {
-        Serial.println("ERROR: Failed to create n20 subscription!");
-    } else {
-        Serial.println("✓ N20 subscription created");
-    }
-
-    ret = rclc_subscription_init_default(
-        &kabech_subscriber,
-        &node,
-        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
-        "/back/kabech");
-    if (ret != RCL_RET_OK) {
-        Serial.println("ERROR: Failed to create kabech subscription!");
-    } else {
-        Serial.println("✓ Kabech subscription created");
-    }
-
-    ret = rclc_subscription_init_default(
-        &dawer_subscriber,
-        &node,
-        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
-        "/back/dawer");
-    if (ret != RCL_RET_OK) {
-        Serial.println("ERROR: Failed to create dawer subscription!");
-    } else {
-        Serial.println("✓ Dawer subscription created");
-    }
-
-    // Create isIDLE service
-    ret = rclc_service_init_default(
-        &idle_service,
-        &node,
-        ROSIDL_GET_SRV_TYPE_SUPPORT(std_srvs, srv, Trigger),
-        "/back/isIDLE");
-    if (ret != RCL_RET_OK) {
-        Serial.println("ERROR: Failed to create isIDLE service!");
-    } else {
-        Serial.println("✓ isIDLE service created");
-    }
-
-    // Create executor (4 handles: 3 subscriptions + 1 service)
-    ret = rclc_executor_init(&executor, &support.context, 4, &allocator);
-    if (ret != RCL_RET_OK) {
-        Serial.println("ERROR: Failed to init executor!");
-    } else {
-        Serial.println("✓ Executor initialized");
-    };
-    rclc_executor_add_subscription(&executor, &n20_subscriber, &n20_msg,
-                                    &n20_callback, ON_NEW_DATA);
-    rclc_executor_add_subscription(&executor, &kabech_subscriber, &kabech_msg,
-                                    &kabech_callback, ON_NEW_DATA);
-    rclc_executor_add_subscription(&executor, &dawer_subscriber, &dawer_msg,
-                                    &dawer_callback, ON_NEW_DATA);
-    rclc_executor_add_service(&executor, &idle_service, &idle_req, &idle_res,
-                              &idle_service_callback);
-    
-    Serial.println("✓✓✓ ESP32 Back Node Ready! ✓✓✓");
+    Serial.println("✓ micro-ROS transport initialized");
+    Serial.println("Connection will be handled by microROSTask...");
 }
 
 void setup(){
