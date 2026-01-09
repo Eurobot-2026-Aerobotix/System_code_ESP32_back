@@ -244,21 +244,20 @@ void apply_command(String command){
 void n20_callback(const void *msgin) {
     const std_msgs__msg__Int32 *msg = (const std_msgs__msg__Int32 *)msgin;
     int value = msg->data;
-    // if value is more that 1111 all tenticles will go down, else 1 means up and 0 means middle, ordered from MSB to LSB w lezem na7kou fi esque bech nroddou combinaision kima dudu possible 
-    String command = "dddd";
-    going_down = true;
-    if (value <16){
-        going_down = false;
-        for (int i=0; i<4; i++){
-            before_going_up_encoder_count[i] = encoderCount[i];
+    // 1 means down, 2 means middle, and 3 means up, ordered from MSB to LSB
+    String command = "";
+    going_down = false;
+    for (int i=0; i<4; i++){
+        int bit = value % 10;
+        if (bit == 1){
+            command = 'd' + command; // down
+            going_down = true;
+        }else if (bit == 2){
+            command = 'm' + command; // middle
+        }else{
+            command = 'u' + command; // up
         }
-        for(int i=0; i<4; i++){
-            if (value & (1 << (3 - i))){
-                command[i] = 'u';
-            }else{
-                command[i] = 'm';
-            }
-        }
+        value /= 10;
     }
     apply_command(command);
 }
@@ -318,17 +317,6 @@ bool is_idle(int tolerance=50){
         }
     }
     return idle;
-}
-
-bool cleared_ground(){
-    bool clear = true;
-    for(int i=0; i<4; i++){
-        if (abs(encoderCount[i] - before_going_up_encoder_count[i]) < 2000){
-            clear = false;
-            break;
-        }
-    }
-    return clear;
 }
 // Service callback for /back/isIDLE service
 void idle_service_callback(const void *req, void *res) {
@@ -427,8 +415,7 @@ void pidControlTask(void *parameter) {
     }
 }
 
-void setup(){
-    Serial.begin(115200);
+void microros_setup(){
     Serial.println("Starting ESP32 back Control Node...");
     
     // Create FreeRTOS mutexes for shared resource protection
@@ -442,28 +429,6 @@ void setup(){
     }
     
     set_microros_transports();
-
-    for(int i=0; i<4; i++){
-        pinMode(encoderPinsA[i], INPUT_PULLUP);
-        pinMode(encoderPinsB[i], INPUT_PULLUP);
-        pinMode(motorPinsA[i], OUTPUT);
-        pinMode(motorPinsB[i], OUTPUT);
-    }
-
-    attachInterrupt(digitalPinToInterrupt(encoderPinsA[0]), encoderA_ISR_0, CHANGE);
-    attachInterrupt(digitalPinToInterrupt(encoderPinsB[0]), encoderB_ISR_0, CHANGE);
-
-    attachInterrupt(digitalPinToInterrupt(encoderPinsA[1]), encoderA_ISR_1, CHANGE);
-    attachInterrupt(digitalPinToInterrupt(encoderPinsB[1]), encoderB_ISR_1, CHANGE);
-
-    attachInterrupt(digitalPinToInterrupt(encoderPinsA[2]), encoderA_ISR_2, CHANGE);
-    attachInterrupt(digitalPinToInterrupt(encoderPinsB[2]), encoderB_ISR_2, CHANGE);
-
-    attachInterrupt(digitalPinToInterrupt(encoderPinsA[3]), encoderA_ISR_3, CHANGE);
-    attachInterrupt(digitalPinToInterrupt(encoderPinsB[3]), encoderB_ISR_3, CHANGE);
-
-    delay(2000);
-    setupServos();
     
     //Initialize micro-ROS with error checking and retry
     Serial.println("Waiting for micro-ROS agent...");
@@ -559,6 +524,34 @@ void setup(){
                               &idle_service_callback);
     
     Serial.println("✓✓✓ ESP32 Back Node Ready! ✓✓✓");
+}
+
+void setup(){
+    Serial.begin(115200);
+
+    for(int i=0; i<4; i++){
+        pinMode(encoderPinsA[i], INPUT_PULLUP);
+        pinMode(encoderPinsB[i], INPUT_PULLUP);
+        pinMode(motorPinsA[i], OUTPUT);
+        pinMode(motorPinsB[i], OUTPUT);
+    }
+
+    attachInterrupt(digitalPinToInterrupt(encoderPinsA[0]), encoderA_ISR_0, CHANGE);
+    attachInterrupt(digitalPinToInterrupt(encoderPinsB[0]), encoderB_ISR_0, CHANGE);
+
+    attachInterrupt(digitalPinToInterrupt(encoderPinsA[1]), encoderA_ISR_1, CHANGE);
+    attachInterrupt(digitalPinToInterrupt(encoderPinsB[1]), encoderB_ISR_1, CHANGE);
+
+    attachInterrupt(digitalPinToInterrupt(encoderPinsA[2]), encoderA_ISR_2, CHANGE);
+    attachInterrupt(digitalPinToInterrupt(encoderPinsB[2]), encoderB_ISR_2, CHANGE);
+
+    attachInterrupt(digitalPinToInterrupt(encoderPinsA[3]), encoderA_ISR_3, CHANGE);
+    attachInterrupt(digitalPinToInterrupt(encoderPinsB[3]), encoderB_ISR_3, CHANGE);
+
+    delay(2000);
+    setupServos();
+
+    microros_setup();
     
     Serial.println("tryna home");
     find_home();
