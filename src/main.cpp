@@ -194,7 +194,7 @@ void applyPositionPID(float dt, int motorIndex){
             motor_homing[motorIndex] = true;
             saved_encoder_count[motorIndex] = encoderCount[motorIndex];
             motor_homing_time[motorIndex] = millis();
-        }else if (millis() - motor_homing_time[motorIndex] > 100){
+        }else if (millis() - motor_homing_time[motorIndex] > 200){
             if (abs(encoderCount[motorIndex] - saved_encoder_count[motorIndex]) == 0){
                 motor_homing[motorIndex] = false;
                 setMotor(0, motorIndex);
@@ -601,4 +601,5 @@ void loop(){
     // Empty loop - all work is done by FreeRTOS tasks
     // The loop() function is still called but doesn't need to do anything
     vTaskDelay(pdMS_TO_TICKS(1000)); // Yield to FreeRTOS scheduler
+    //test_with_serial();
 }
