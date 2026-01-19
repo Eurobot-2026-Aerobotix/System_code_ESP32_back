@@ -658,7 +658,7 @@ void setup(){
     delay(2000);
     setupServos();
 
-    microros_setup();
+    //microros_setup();
     
     Serial.println("tryna home");
     find_home();
@@ -707,6 +707,6 @@ void setup(){
 void loop(){
     // Empty loop - all work is done by FreeRTOS tasks
     // The loop() function is still called but doesn't need to do anything
-    vTaskDelay(pdMS_TO_TICKS(1000)); // Yield to FreeRTOS scheduler
-    //test_with_serial();
+    //vTaskDelay(pdMS_TO_TICKS(1000)); // Yield to FreeRTOS scheduler
+    test_with_serial();
 }
