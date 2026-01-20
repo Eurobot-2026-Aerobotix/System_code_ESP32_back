@@ -85,9 +85,9 @@ void idle_service_callback(const void *req, void *res);
 
 volatile long encoderCount[4] = {0, 0, 0, 0};
 
-float kp[4] = {0.8, 3, 1.5, 3};
-float ki[4] = {5, 5, 3, 1.5};
-float kd[4] = {0.05, 0.1, 0.01, 0.05};
+float kp[4] = {3, 3, 3, 3};
+float ki[4] = {1.5, 1.5, 1.5, 1.5};
+float kd[4] = {0.05, 0.05, 0.05, 0.05};
 
 float integral[4] = {0, 0, 0, 0};
 float last_error[4] = {0, 0, 0, 0};
@@ -96,7 +96,7 @@ long target_encoder_count[4] = {0, 0, 0, 0};
 
 long upPosition[4] = {0, 0, 0, 0};
 long midPosition[4] = {2250, 2210, 2000, 2080};
-long downPosition[4] = {8250, 8260, 8000, 8200};
+long downPosition[4] = {8500, 8500, 8500, 8250};
 bool motor_homing[4] = {false, false, false, false};
 int motor_homing_time[4] = {0, 0, 0, 0};
 int saved_encoder_count[4] = {0, 0, 0, 0};
@@ -609,6 +609,7 @@ void pidControlTask(void *parameter) {
         for (int i = 0; i < 4; i++) {
             applyPositionPID(dt, i);
         }
+        test_with_serial();
         
         // Delay until next cycle
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
@@ -707,6 +708,6 @@ void setup(){
 void loop(){
     // Empty loop - all work is done by FreeRTOS tasks
     // The loop() function is still called but doesn't need to do anything
-    //vTaskDelay(pdMS_TO_TICKS(1000)); // Yield to FreeRTOS scheduler
-    test_with_serial();
+    vTaskDelay(pdMS_TO_TICKS(1000)); // Yield to FreeRTOS scheduler
+    //test_with_serial();
 }
