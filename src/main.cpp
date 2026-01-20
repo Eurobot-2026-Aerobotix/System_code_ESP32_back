@@ -609,7 +609,6 @@ void pidControlTask(void *parameter) {
         for (int i = 0; i < 4; i++) {
             applyPositionPID(dt, i);
         }
-        test_with_serial();
         
         // Delay until next cycle
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
@@ -709,5 +708,4 @@ void loop(){
     // Empty loop - all work is done by FreeRTOS tasks
     // The loop() function is still called but doesn't need to do anything
     vTaskDelay(pdMS_TO_TICKS(1000)); // Yield to FreeRTOS scheduler
-    //test_with_serial();
 }
