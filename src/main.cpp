@@ -5,6 +5,7 @@
 #include <rclc/rclc.h>
 #include <rclc/executor.h>
 #include <std_msgs/msg/int32.h>
+#include <std_msgs/msg/string.h>
 #include <std_srvs/srv/trigger.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -68,6 +69,7 @@ bool homed = false;
 rcl_subscription_t n20_subscriber;
 rcl_subscription_t kabech_subscriber;
 rcl_subscription_t dawer_subscriber;
+rcl_publisher_t command_publisher;
 rcl_service_t idle_service;
 rclc_executor_t executor;
 rclc_support_t support;
@@ -76,6 +78,7 @@ rcl_node_t node;
 std_msgs__msg__Int32 n20_msg;
 std_msgs__msg__Int32 kabech_msg;
 std_msgs__msg__Int32 dawer_msg;
+std_msgs__msg__String command_msg;
 std_srvs__srv__Trigger_Request idle_req;
 std_srvs__srv__Trigger_Response idle_res;
 
@@ -304,6 +307,12 @@ void n20_callback(const void *msgin) {
         value /= 10;
     }
     apply_command(command);
+    
+    // Publish the command string
+    command_msg.data.data = (char*)command.c_str();
+    command_msg.data.size = command.length();
+    command_msg.data.capacity = command.length() + 1;
+    rcl_publish(&command_publisher, &command_msg, NULL);
 }
 
 // Callback function for /forward/kabech topic
@@ -439,6 +448,9 @@ void cleanupMicroROS() {
     // Clean up service
     rcl_service_fini(&idle_service, &node);
     
+    // Clean up publisher
+    rcl_publisher_fini(&command_publisher, &node);
+    
     // Clean up subscriptions
     rcl_subscription_fini(&n20_subscriber, &node);
     rcl_subscription_fini(&kabech_subscriber, &node);
@@ -522,6 +534,29 @@ bool initializeMicroROS() {
         return false;
     }
     Serial.println("✓ Dawer subscription created");
+
+    // Create publisher with reliable QoS
+    rcl_publisher_options_t pub_opts = rcl_publisher_get_default_options();
+    pub_opts.qos.reliability = RMW_QOS_POLICY_RELIABILITY_RELIABLE;
+    pub_opts.qos.history = RMW_QOS_POLICY_HISTORY_KEEP_LAST;
+    pub_opts.qos.depth = 1;
+
+    ret = rclc_publisher_init(
+        &command_publisher,
+        &node,
+        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String),
+        "/back/command",
+        &pub_opts.qos);
+    if (ret != RCL_RET_OK) {
+        Serial.println("✗ Failed to create command publisher");
+        rcl_subscription_fini(&n20_subscriber, &node);
+        rcl_subscription_fini(&kabech_subscriber, &node);
+        rcl_subscription_fini(&dawer_subscriber, &node);
+        rcl_node_fini(&node);
+        rclc_support_fini(&support);
+        return false;
+    }
+    Serial.println("✓ Command publisher created");
 
     // Create service options with reliable QoS
     rcl_service_options_t svc_opts = rcl_service_get_default_options();
