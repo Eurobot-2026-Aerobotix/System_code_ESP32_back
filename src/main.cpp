@@ -377,6 +377,29 @@ void test_with_serial(){
             ba33ed_3la_ba3dhou();
         }else if (command[0] == 's'){
             lemm_l_ba3dhou();
+        }else if (command[0] == 'c') {
+            // format: c<servo_id><angle>
+            // example: c190  -> left servo to 90°
+            //          c245  -> middle servo to 45°
+            //          c3120 -> right servo to 120°
+
+            int servo_id = command[1] - 1;   // '1'->0, '2'->1, '3'->2
+
+            if (servo_id >= 0 && servo_id < 3) {
+                int angle = command.substring(2).toInt();
+
+                // OPTION 1: using array
+                if (servo_id == 1){
+                    left_servo.write(angle);
+                }else if (servo_id == 2){
+                    middle_servo.write(angle);
+                }else{
+                    right_servo.write(angle);
+                }
+
+                // OPTION 2: using function
+                // setServoAngle(servo_id, angle);
+            }
         }else{
             target_encoder_count[(int)command[0]-48] = command.substring(1).toInt();
         }
@@ -674,7 +697,7 @@ void setup(){
     delay(2000);
     setupServos();
 
-    //microros_setup();
+    microros_setup();
     
     Serial.println("tryna home");
     find_home();
