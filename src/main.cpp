@@ -61,6 +61,8 @@ int minPWM[4] = {80, 80, 80, 80};
 
 // Global variable for isIDLE service
 bool isIDLE = true;
+bool setup_completed = false;
+bool homed = false;
 
 // micro-ROS variables
 rcl_subscription_t n20_subscriber;
@@ -251,10 +253,41 @@ void apply_command(String command){
         target_encoder_count[(int)command[0]-48] = command.substring(1).toInt();
     }
 }
+void find_home(){
+    homed = false;
+    for(int i=0; i<4; i++){
+        setMotor(-255, i);
+    }
+    int motors_at_home = 0;
+    int saved_encoder_counts[4] = {encoderCount[0], encoderCount[1], encoderCount[2], encoderCount[3]};
+    bool motor_homed[4] = {false, false, false, false};
+    delay(500);
+    while(motors_at_home < 4){
+        delay(200);
+        for(int i=0; i<4; i++){
+            if (!motor_homed[i] && abs(encoderCount[i] - saved_encoder_counts[i]) == 0){
+                motors_at_home++;
+                motor_homed[i] = true;
+                setMotor(0, i);
+                encoderCount[i] = upPosition[i];
+                Serial.println("Motor " + String(i) + " homed.");
+            }else{
+                saved_encoder_counts[i] = encoderCount[i];
+            }
+        }
+    }
+    homed = true;
+}
+
 // Callback function for /forward/n20 topic
 void n20_callback(const void *msgin) {
     const std_msgs__msg__Int32 *msg = (const std_msgs__msg__Int32 *)msgin;
     int value = msg->data;
+    if (!value){
+        find_home();
+        apply_command("mmmm");
+        return;
+    }
     // 1 means down, 2 means middle, and 3 means up, ordered from MSB to LSB
     String command = "";
     going_down = false;
@@ -295,30 +328,6 @@ void dawer_callback(const void *msgin) {
     }
 }
 
-void find_home(){
-    for(int i=0; i<4; i++){
-        setMotor(-255, i);
-    }
-    int motors_at_home = 0;
-    int saved_encoder_counts[4] = {encoderCount[0], encoderCount[1], encoderCount[2], encoderCount[3]};
-    bool motor_homed[4] = {false, false, false, false};
-    delay(500);
-    while(motors_at_home < 4){
-        delay(200);
-        for(int i=0; i<4; i++){
-            if (!motor_homed[i] && abs(encoderCount[i] - saved_encoder_counts[i]) == 0){
-                motors_at_home++;
-                motor_homed[i] = true;
-                setMotor(0, i);
-                encoderCount[i] = upPosition[i];
-                Serial.println("Motor " + String(i) + " homed.");
-            }else{
-                saved_encoder_counts[i] = encoderCount[i];
-            }
-        }
-    }
-}
-
 bool is_idle(int tolerance=50){
     bool idle = true;
     for(int i=0; i<4; i++){
@@ -334,7 +343,7 @@ void idle_service_callback(const void *req, void *res) {
     std_srvs__srv__Trigger_Response *response = (std_srvs__srv__Trigger_Response *)res;
     
     // Check if system is idle
-    bool system_idle = (( going_down && is_idle() ) || (!going_down && is_idle(2000)));
+    bool system_idle = homed && (( going_down && is_idle() ) || (!going_down && is_idle(2000)));
     
     // Set response success field
     response->success = system_idle;
@@ -654,7 +663,6 @@ void pidControlTask(void *parameter) {
         for (int i = 0; i < 4; i++) {
             applyPositionPID(dt, i);
         }
-        test_with_serial();
         // Delay until next cycle
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
@@ -703,20 +711,18 @@ void setup(){
     delay(2000);
     setupServos();
 
-    //microros_setup();
+    microros_setup();
     
     Serial.println("tryna home");
     find_home();
     Serial.println("Homing complete.");
-    for(int i=0; i<4; i++){
-        setMotor(0, i);
-    }
+
     apply_command("mmmm");
     
     // ========================================================================
     // Create FreeRTOS Tasks
     // ========================================================================
-    /*
+    
     // Create micro-ROS task on Core 0 (higher priority)
     xTaskCreatePinnedToCore(
         microROSTask,           // Task function
@@ -727,7 +733,7 @@ void setup(){
         &microROSTaskHandle,    // Task handle
         0                       // Core ID (0 or 1)
     );
-    */
+    
     // Create PID control task on Core 1 (medium priority)
     xTaskCreatePinnedToCore(
         pidControlTask,         // Task function
@@ -748,6 +754,7 @@ void setup(){
     Serial.println("✓ micro-ROS task on Core 0 (Priority 2)");
     Serial.println("✓ PID Control task on Core 1 (Priority 1)");
     Serial.println("=== System ready ===");
+    setup_completed = true;
 }
 void loop(){
     // Empty loop - all work is done by FreeRTOS tasks
