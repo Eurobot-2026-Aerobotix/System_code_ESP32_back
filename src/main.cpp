@@ -48,13 +48,13 @@ const int right_servo_pin = 33;
 Servo middle_servo;
 Servo left_servo;
 Servo right_servo;
-int middle_servo_pos_0 = 50;
-int middle_servo_pos_1 = 145;
+int middle_servo_pos_0 = 46;
+int middle_servo_pos_1 = 125;
 
-int left_servo_pos_0 = 2;
-int left_servo_pos_1 = 145;
+int left_servo_pos_0 = 9;
+int left_servo_pos_1 = 150;
 
-int right_servo_pos_0 = 171;
+int right_servo_pos_0 = 162;
 int right_servo_pos_1 = 27;
 
 int minPWM[4] = {80, 80, 80, 80};
@@ -383,7 +383,7 @@ void test_with_serial(){
             //          c245  -> middle servo to 45°
             //          c3120 -> right servo to 120°
 
-            int servo_id = command[1] - 1;   // '1'->0, '2'->1, '3'->2
+            int servo_id = command[1] - '1';   // '1'->0, '2'->1, '3'->2
 
             if (servo_id >= 0 && servo_id < 3) {
                 int angle = command.substring(2).toInt();
@@ -391,10 +391,16 @@ void test_with_serial(){
                 // OPTION 1: using array
                 if (servo_id == 1){
                     left_servo.write(angle);
+                    Serial.print("moving left servo to angle ");
+                    Serial.println(angle);
                 }else if (servo_id == 2){
                     middle_servo.write(angle);
+                    Serial.print("moving middle servo to angle ");
+                    Serial.println(angle);
                 }else{
                     right_servo.write(angle);
+                    Serial.print("moving right servo to angle ");
+                    Serial.println(angle);
                 }
 
                 // OPTION 2: using function
@@ -586,7 +592,7 @@ void microROSTask(void *parameter) {
                 
             case AGENT_CONNECTED:
                 // Spin executor to process messages
-                rcl_ret_t ret = rclc_executor_spin_some(&executor, RCL_MS_TO_NS(10));
+                rcl_ret_t ret = rclc_executor_spin_some(&executor, RCL_MS_TO_NS(20));
                 
                 // Periodic ping to check agent health
                 if (millis() - last_ping_time > PING_INTERVAL) {
@@ -601,13 +607,13 @@ void microROSTask(void *parameter) {
                     last_ping_time = millis();
                 }
                 
-                vTaskDelay(pdMS_TO_TICKS(10));
+                vTaskDelay(pdMS_TO_TICKS(20));
                 break;
         }
         
         // Small delay for non-connected states is already handled in each case
         if (agent_status == AGENT_CONNECTED) {
-            vTaskDelay(pdMS_TO_TICKS(10));
+            vTaskDelay(pdMS_TO_TICKS(20));
         }
     }
 }
@@ -632,7 +638,7 @@ void pidControlTask(void *parameter) {
         for (int i = 0; i < 4; i++) {
             applyPositionPID(dt, i);
         }
-        
+        test_with_serial();
         // Delay until next cycle
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
@@ -681,7 +687,7 @@ void setup(){
     delay(2000);
     setupServos();
 
-    microros_setup();
+    //microros_setup();
     
     Serial.println("tryna home");
     find_home();
@@ -694,7 +700,7 @@ void setup(){
     // ========================================================================
     // Create FreeRTOS Tasks
     // ========================================================================
-    
+    /*
     // Create micro-ROS task on Core 0 (higher priority)
     xTaskCreatePinnedToCore(
         microROSTask,           // Task function
@@ -705,7 +711,7 @@ void setup(){
         &microROSTaskHandle,    // Task handle
         0                       // Core ID (0 or 1)
     );
-    
+    */
     // Create PID control task on Core 1 (medium priority)
     xTaskCreatePinnedToCore(
         pidControlTask,         // Task function
