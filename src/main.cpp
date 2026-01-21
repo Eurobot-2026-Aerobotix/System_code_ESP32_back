@@ -433,12 +433,19 @@ bool initializeMicroROS() {
     }
     Serial.println("✓ Node created");
 
-    // Create subscriptions
-    ret = rclc_subscription_init_default(
+    // Create QoS profile with reliable settings
+    rcl_subscription_options_t sub_opts = rcl_subscription_get_default_options();
+    sub_opts.qos.reliability = RMW_QOS_POLICY_RELIABILITY_RELIABLE;
+    sub_opts.qos.history = RMW_QOS_POLICY_HISTORY_KEEP_LAST;
+    sub_opts.qos.depth = 1;
+
+    // Create subscriptions with reliable QoS
+    ret = rclc_subscription_init(
         &n20_subscriber,
         &node,
         ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
-        "/back/n20");
+        "/back/n20",
+        &sub_opts.qos);
     if (ret != RCL_RET_OK) {
         Serial.println("✗ Failed to create n20 subscription");
         rcl_node_fini(&node);
@@ -447,11 +454,12 @@ bool initializeMicroROS() {
     }
     Serial.println("✓ N20 subscription created");
 
-    ret = rclc_subscription_init_default(
+    ret = rclc_subscription_init(
         &kabech_subscriber,
         &node,
         ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
-        "/back/kabech");
+        "/back/kabech",
+        &sub_opts.qos);
     if (ret != RCL_RET_OK) {
         Serial.println("✗ Failed to create kabech subscription");
         rcl_subscription_fini(&n20_subscriber, &node);
@@ -461,11 +469,12 @@ bool initializeMicroROS() {
     }
     Serial.println("✓ Kabech subscription created");
 
-    ret = rclc_subscription_init_default(
+    ret = rclc_subscription_init(
         &dawer_subscriber,
         &node,
         ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
-        "/back/dawer");
+        "/back/dawer",
+        &sub_opts.qos);
     if (ret != RCL_RET_OK) {
         Serial.println("✗ Failed to create dawer subscription");
         rcl_subscription_fini(&n20_subscriber, &node);
@@ -476,12 +485,19 @@ bool initializeMicroROS() {
     }
     Serial.println("✓ Dawer subscription created");
 
-    // Create isIDLE service
-    ret = rclc_service_init_default(
+    // Create service options with reliable QoS
+    rcl_service_options_t svc_opts = rcl_service_get_default_options();
+    svc_opts.qos.reliability = RMW_QOS_POLICY_RELIABILITY_RELIABLE;
+    svc_opts.qos.history = RMW_QOS_POLICY_HISTORY_KEEP_LAST;
+    svc_opts.qos.depth = 1;
+
+    // Create isIDLE service with reliable QoS
+    ret = rclc_service_init(
         &idle_service,
         &node,
         ROSIDL_GET_SRV_TYPE_SUPPORT(std_srvs, srv, Trigger),
-        "/back/isIDLE");
+        "/back/isIDLE",
+        &svc_opts.qos);
     if (ret != RCL_RET_OK) {
         Serial.println("✗ Failed to create isIDLE service");
         rcl_subscription_fini(&n20_subscriber, &node);
