@@ -53,10 +53,10 @@ int middle_servo_pos_0 = 46;
 int middle_servo_pos_1 = 125;
 
 int left_servo_pos_0 = 9;
-int left_servo_pos_1 = 150;
+int left_servo_pos_1 = 148;
 
-int right_servo_pos_0 = 162;
-int right_servo_pos_1 = 27;
+int right_servo_pos_0 = 161;
+int right_servo_pos_1 = 25;
 
 int minPWM[4] = {80, 80, 80, 80};
 
@@ -394,9 +394,10 @@ void test_with_serial(){
             lemm_l_ba3dhou();
         }else if (command[0] == 'c') {
             // format: c<servo_id><angle>
-            // example: c190  -> left servo to 90°
-            //          c245  -> middle servo to 45°
-            //          c3120 -> right servo to 120°
+            // example: // example: c130  -> right servo to 90°
+            //          c260  -> left servo to 45°
+            //          c3120 -> middle servo to 120°
+            // Note: The servo IDs are relative to the face you are testing from, not according to the right and left of the robot itself
 
             int servo_id = command[1] - '1';   // '1'->0, '2'->1, '3'->2
 
@@ -696,6 +697,7 @@ void pidControlTask(void *parameter) {
                 applyPositionPID(dt, i);
             }
         }
+        // test_with_serial();
         // Delay until next cycle
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
