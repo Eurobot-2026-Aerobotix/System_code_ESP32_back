@@ -34,13 +34,13 @@ SemaphoreHandle_t encoderMutex;
 SemaphoreHandle_t targetMutex;
 SemaphoreHandle_t servoMutex;
 
-int motorPinsA[4] = {15, 5, 4, 2};
-int motorPinsB[4] = {16, 23, 14, 19};
-int motorPinsEnable[4] = {22, 21, 12, 18};
+int motorPinsA[4] = {2, 4, 5, 15};
+int motorPinsB[4] = {19, 14, 23, 16};
+int motorPinsEnable[4] = {18, 12, 21, 22};
 // motors are ordered from right to left when looking from above and the ESP32's USB port is facing downwards
 
-int encoderPinsB[4] = {26, 32, 34, 39};
-int encoderPinsA[4] = {27, 25, 35, 36};
+int encoderPinsB[4] = {39, 34, 32, 26};
+int encoderPinsA[4] = {36, 35, 25, 27};
 
 const int middle_servo_pin = 17;
 const int left_servo_pin = 13;
@@ -100,8 +100,8 @@ float last_error[4] = {0, 0, 0, 0};
 long target_encoder_count[4] = {0, 0, 0, 0};
 
 long upPosition[4] = {0, 0, 0, 0};
-long midPosition[4] = {2250, 2210, 2000, 2080};
-long downPosition[4] = {8500, 8500, 8500, 8250};
+long midPosition[4] = {2080, 2000, 2210, 2250};
+long downPosition[4] = {8250, 8500, 8500, 8500};
 bool motor_homing[4] = {false, false, false, false};
 int motor_homing_time[4] = {0, 0, 0, 0};
 int saved_encoder_count[4] = {0, 0, 0, 0};
@@ -309,10 +309,7 @@ void n20_callback(const void *msgin) {
     apply_command(command);
     
     // Publish the command string
-    command_msg.data.data = (char*)command.c_str();
-    command_msg.data.size = command.length();
-    command_msg.data.capacity = command.length() + 1;
-    rcl_publish(&command_publisher, &command_msg, NULL);
+    //rcl_publish(&command_publisher, &command_msg, NULL);
 }
 
 // Callback function for /forward/kabech topic
@@ -677,7 +674,6 @@ void microROSTask(void *parameter) {
         }
     }
 }
-
 
 // ============================================================================
 // FreeRTOS Task: PID Control Loop
