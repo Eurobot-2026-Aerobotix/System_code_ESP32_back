@@ -101,6 +101,7 @@ long target_encoder_count[4] = {0, 0, 0, 0};
 
 long upPosition[4] = {0, 0, 0, 0};
 long midPosition[4] = {2250, 2210, 2000, 2080};
+long preparePosition[4] = {7250, 7100, 7000, 6480};
 long downPosition[4] = {8500, 8500, 8500, 8250};
 bool motor_homing[4] = {false, false, false, false};
 int motor_homing_time[4] = {0, 0, 0, 0};
@@ -210,7 +211,7 @@ void applyPositionPID(float dt, int motorIndex){
             motor_homing[motorIndex] = true;
             saved_encoder_count[motorIndex] = encoderCount[motorIndex];
             motor_homing_time[motorIndex] = millis();
-        }else if (millis() - motor_homing_time[motorIndex] > 200){
+        }else if (millis() - motor_homing_time[motorIndex] > 350){
             if (abs(encoderCount[motorIndex] - saved_encoder_count[motorIndex]) == 0){
                 motor_homing[motorIndex] = false;
                 setMotor(0, motorIndex);
@@ -242,12 +243,14 @@ void khabbi_l_kabecha(){
     right_servo.write(right_servo_pos_0);
 }
 void apply_command(String command){
-    if (command[0] == 'u' || command[0] == 'm' || command[0] == 'd'){
+    if (command[0] == 'p' || command[0] == 'u' || command[0] == 'm' || command[0] == 'd'){
         for(int i=0; i<4; i++){
             if (command[i] == 'u'){
                 target_encoder_count[i] = upPosition[i];
             }else if (command[i] == 'm'){
                 target_encoder_count[i] = midPosition[i];
+            }else if (command[i] == 'p'){
+                target_encoder_count[i] = preparePosition[i];
             }else if (command[i] == 'd'){
                 target_encoder_count[i] = downPosition[i];
             }
@@ -266,7 +269,7 @@ void find_home(){
     bool motor_homed[4] = {false, false, false, false};
     delay(500);
     while(motors_at_home < 4){
-        delay(200);
+        delay(350);
         for(int i=0; i<4; i++){
             if (!motor_homed[i] && abs(encoderCount[i] - saved_encoder_counts[i]) == 0){
                 motors_at_home++;
@@ -300,6 +303,8 @@ void n20_callback(const void *msgin) {
             command = 'd' + command; // down
             going_down = true;
         }else if (bit == 2){
+            command = 'p' + command; // prepare
+        }else if (bit == 3){
             command = 'm' + command; // middle
         }else{
             command = 'u' + command; // up
@@ -374,12 +379,14 @@ void idle_service_callback(const void *req, void *res) {
 void test_with_serial(){
     if (Serial.available() > 0) {
         String command = Serial.readStringUntil('\n');
-        if (command[0] == 'u' || command[0] == 'm' || command[0] == 'd'){
+        if (command[0] == 'p' || command[0] == 'u' || command[0] == 'm' || command[0] == 'd'){
             for(int i=0; i<4; i++){
                 if (command[i] == 'u'){
                     target_encoder_count[i] = upPosition[i];
                 }else if (command[i] == 'm'){
                     target_encoder_count[i] = midPosition[i];
+                }else if (command[i] == 'p'){
+                    target_encoder_count[i] = preparePosition[i];
                 }else if (command[i] == 'd'){
                     target_encoder_count[i] = downPosition[i];
                 }
@@ -697,7 +704,7 @@ void pidControlTask(void *parameter) {
                 applyPositionPID(dt, i);
             }
         }
-        // test_with_serial();
+         //test_with_serial();
         // Delay until next cycle
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
@@ -795,4 +802,5 @@ void loop(){
     // Empty loop - all work is done by FreeRTOS tasks
     // The loop() function is still called but doesn't need to do anything
     vTaskDelay(pdMS_TO_TICKS(1000)); // Yield to FreeRTOS scheduler
+    
 }
