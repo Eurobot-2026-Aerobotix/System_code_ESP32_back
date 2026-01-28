@@ -98,6 +98,7 @@ float integral[4] = {0, 0, 0, 0};
 float last_error[4] = {0, 0, 0, 0};
 
 long target_encoder_count[4] = {0, 0, 0, 0};
+int pwm_output[4] = {0, 0, 0, 0};
 
 long upPosition[4] = {0, 0, 0, 0};
 long midPosition[4] = {2250, 2210, 2000, 2080};
@@ -106,6 +107,7 @@ long downPosition[4] = {8500, 8500, 8500, 8250};
 bool motor_homing[4] = {false, false, false, false};
 int motor_homing_time[4] = {0, 0, 0, 0};
 int saved_encoder_count[4] = {0, 0, 0, 0};
+int first_saved_encoder_count[4] = {0, 0, 0, 0};
 
 bool going_down = false;
 int before_going_up_encoder_count[4] = {0, 0, 0, 0};
@@ -172,7 +174,8 @@ void setupServos(){
     right_servo.write(right_servo_pos_0);
 }
 
-void setMotor(int pwm, int motorIndex){  
+void setMotor(int pwm, int motorIndex){
+    pwm_output[motorIndex] = pwm;
     if(abs(pwm)<minPWM[motorIndex]){
     pwm = 0;
     }
@@ -210,8 +213,9 @@ void applyPositionPID(float dt, int motorIndex){
             setMotor(-255, motorIndex);
             motor_homing[motorIndex] = true;
             saved_encoder_count[motorIndex] = encoderCount[motorIndex];
+            first_saved_encoder_count[motorIndex] = encoderCount[motorIndex];
             motor_homing_time[motorIndex] = millis();
-        }else if (millis() - motor_homing_time[motorIndex] > 350){
+        }else if (millis() - motor_homing_time[motorIndex] > 350 && (encoderCount[motorIndex] < first_saved_encoder_count[motorIndex]/2) ){
             if (abs(encoderCount[motorIndex] - saved_encoder_count[motorIndex]) == 0){
                 motor_homing[motorIndex] = false;
                 setMotor(0, motorIndex);
@@ -243,6 +247,7 @@ void khabbi_l_kabecha(){
     right_servo.write(right_servo_pos_0);
 }
 void apply_command(String command){
+    xSemaphoreTake(targetMutex, portMAX_DELAY);
     if (command[0] == 'p' || command[0] == 'u' || command[0] == 'm' || command[0] == 'd'){
         for(int i=0; i<4; i++){
             if (command[i] == 'u'){
@@ -258,6 +263,7 @@ void apply_command(String command){
     }else{
         target_encoder_count[(int)command[0]-48] = command.substring(1).toInt();
     }
+    xSemaphoreGive(targetMutex);
 }
 void find_home(){
     homed = false;
@@ -312,9 +318,44 @@ void n20_callback(const void *msgin) {
         value /= 10;
     }
     apply_command(command);
+
+    String s = "new command :" + command;
+    
+    command_msg.data.data = (char*)malloc(s.length() + 1);
+    strcpy(command_msg.data.data, s.c_str());
+    command_msg.data.size = s.length();
+    command_msg.data.capacity = s.length() + 1;
     
     // Publish the command string
-    //rcl_publish(&command_publisher, &command_msg, NULL);
+    rcl_publish(&command_publisher, &command_msg, NULL);
+    
+    // Free allocated memory
+    free(command_msg.data.data);
+    command_msg.data.data = NULL;
+    for(int i=0; i<20; i++){
+        String s =
+            String(pwm_output[0]) + " " +
+            String(pwm_output[1]) + " " +
+            String(pwm_output[2]) + " " +
+            String(pwm_output[3]) + " counts:" +
+            String(encoderCount[0]) + " " +
+            String(encoderCount[1]) + " " +
+            String(encoderCount[2]) + " " +
+            String(encoderCount[3]);;
+        
+        command_msg.data.data = (char*)malloc(s.length() + 1);
+        strcpy(command_msg.data.data, s.c_str());
+        command_msg.data.size = s.length();
+        command_msg.data.capacity = s.length() + 1;
+        
+        // Publish the command string
+        rcl_publish(&command_publisher, &command_msg, NULL);
+        
+        // Free allocated memory
+        free(command_msg.data.data);
+        command_msg.data.data = NULL;
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
 }
 
 // Callback function for /forward/kabech topic
@@ -700,9 +741,11 @@ void pidControlTask(void *parameter) {
         
         // Apply PID control for all 4 motors
         if (homed){
+            xSemaphoreTake(targetMutex, portMAX_DELAY);
             for (int i = 0; i < 4; i++) {
                 applyPositionPID(dt, i);
             }
+            xSemaphoreGive(targetMutex);
         }
          //test_with_serial();
         // Delay until next cycle
@@ -773,7 +816,7 @@ void setup(){
         NULL,                   // Parameters
         2,                      // Priority (0-24, higher number = higher priority)
         &microROSTaskHandle,    // Task handle
-        0                       // Core ID (0 or 1)
+        1                       // Core ID (0 or 1)
     );
     
     // Create PID control task on Core 1 (medium priority)
@@ -784,7 +827,7 @@ void setup(){
         NULL,                   // Parameters
         1,                      // Priority
         &pidControlTaskHandle,  // Task handle
-        1                       // Core ID (0 or 1)
+        0                       // Core ID (0 or 1)
     );
     
     if (microROSTaskHandle == NULL || pidControlTaskHandle == NULL) {
