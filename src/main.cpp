@@ -819,7 +819,7 @@ void setup(){
         NULL,                   // Parameters
         2,                      // Priority (0-24, higher number = higher priority)
         &microROSTaskHandle,    // Task handle
-        1                       // Core ID (0 or 1)
+        0                       // Core ID (0 or 1)
     );
     
     // Create PID control task on Core 1 (medium priority)
@@ -830,7 +830,7 @@ void setup(){
         NULL,                   // Parameters
         1,                      // Priority
         &pidControlTaskHandle,  // Task handle
-        0                       // Core ID (0 or 1)
+        1                       // Core ID (0 or 1)
     );
     
     if (microROSTaskHandle == NULL || pidControlTaskHandle == NULL) {
