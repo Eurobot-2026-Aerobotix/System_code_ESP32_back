@@ -102,7 +102,7 @@ int pwm_output[4] = {0, 0, 0, 0};
 
 long upPosition[4] = {0, 0, 0, 0};
 long midPosition[4] = {2250, 2210, 2000, 2080};
-long preparePosition[4] = {7250, 7100, 7000, 6480};
+long preparePosition[4] = {7250, 7100, 7300, 6900};
 long downPosition[4] = {8500, 8500, 8500, 8250};
 bool motor_homing[4] = {false, false, false, false};
 int motor_homing_time[4] = {0, 0, 0, 0};
@@ -759,10 +759,7 @@ void pidControlTask(void *parameter) {
 void microros_setup(){
     Serial.println("Starting ESP32 back Control Node...");
     
-    // Create FreeRTOS mutexes for shared resource protection
-    encoderMutex = xSemaphoreCreateMutex();
-    targetMutex = xSemaphoreCreateMutex();
-    servoMutex = xSemaphoreCreateMutex();
+   
     
     if (encoderMutex == NULL || targetMutex == NULL || servoMutex == NULL) {
         Serial.println("ERROR: Failed to create mutexes!");
@@ -776,7 +773,10 @@ void microros_setup(){
 
 void setup(){
     Serial.begin(115200);
-
+ // Create FreeRTOS mutexes for shared resource protection
+    encoderMutex = xSemaphoreCreateMutex();
+    targetMutex = xSemaphoreCreateMutex();
+    servoMutex = xSemaphoreCreateMutex();
     for(int i=0; i<4; i++){
         pinMode(encoderPinsA[i], INPUT_PULLUP);
         pinMode(encoderPinsB[i], INPUT_PULLUP);
