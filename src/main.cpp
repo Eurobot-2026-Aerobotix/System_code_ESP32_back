@@ -368,21 +368,15 @@ void idle_service_callback(const void *req, void *res) {
     // Set response success field
     response->success = system_idle;
     
-    // Properly allocate and assign the response message using micro-ROS string utilities
-    const char* msg = system_idle ? "System is IDLE" : "System is BUSY";
+    // Use static strings to avoid memory leaks - micro-ROS will handle these correctly
+    static const char* idle_msg = "System is IDLE";
+    static const char* busy_msg = "System is BUSY";
+    const char* msg = system_idle ? idle_msg : busy_msg;
     
-    // Allocate memory for the string
-    response->message.data = (char*)malloc(strlen(msg) + 1);
-    if (response->message.data != NULL) {
-        strcpy(response->message.data, msg);
-        response->message.size = strlen(msg);
-        response->message.capacity = strlen(msg) + 1;
-    } else {
-        // Fallback if allocation fails
-        response->message.data = (char*)"";
-        response->message.size = 0;
-        response->message.capacity = 0;
-    }
+    // Assign static string directly without malloc
+    response->message.data = (char*)msg;
+    response->message.size = strlen(msg);
+    response->message.capacity = 0; // Indicates static string, no deallocation needed
 }
 
 void test_with_serial(){
@@ -658,6 +652,7 @@ void microROSTask(void *parameter) {
                 if (initializeMicroROS()) {
                     agent_status = AGENT_CONNECTED;
                     last_ping_time = millis();
+                    last_status_publish = millis();
                     Serial.println("[STATUS] Successfully connected to agent");
                 } else {
                     Serial.println("[STATUS] Connection failed, retrying...");
