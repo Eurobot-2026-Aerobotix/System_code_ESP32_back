@@ -37,6 +37,9 @@ SemaphoreHandle_t servoMutex;
 int motorPinsA[4] = {15, 5, 4, 2};
 int motorPinsB[4] = {16, 23, 14, 19};
 int motorPinsEnable[4] = {22, 21, 12, 18};
+int motorPWMChannels[4] = {0, 1, 2, 3};
+const int motorPWMFreq = 20000;
+const int motorPWMResolution = 8;
 // motors are ordered from right to left when looking from above and the ESP32's USB port is facing downwards
 
 int encoderPinsB[4] = {26, 32, 34, 39};
@@ -201,13 +204,21 @@ void setupServos(){
     right_servo.write(right_servo_pos_0);
 }
 
+void setupMotorPWM(){
+    for (int i = 0; i < 4; i++) {
+        ledcSetup(motorPWMChannels[i], motorPWMFreq, motorPWMResolution);
+        ledcAttachPin(motorPinsEnable[i], motorPWMChannels[i]);
+        ledcWrite(motorPWMChannels[i], 0);
+    }
+}
+
 void setMotor(int pwm, int motorIndex){
     pwm_output[motorIndex] = pwm;
     if(abs(pwm)<minPWM[motorIndex]){
     pwm = 0;
     }
     pwm = constrain(pwm , -255 , 255);
-    analogWrite(motorPinsEnable[motorIndex], abs(pwm));
+    ledcWrite(motorPWMChannels[motorIndex], abs(pwm));
     if (pwm > 0){
         digitalWrite(motorPinsA[motorIndex], 1);
         digitalWrite(motorPinsB[motorIndex], 0);
@@ -216,7 +227,7 @@ void setMotor(int pwm, int motorIndex){
         digitalWrite(motorPinsA[motorIndex], 0);
         digitalWrite(motorPinsB[motorIndex], 1);
     }else{
-        digitalWrite(motorPinsEnable[motorIndex], 1);
+        ledcWrite(motorPWMChannels[motorIndex], 255);
         digitalWrite(motorPinsA[motorIndex], 1);
         digitalWrite(motorPinsB[motorIndex], 1);
     }
@@ -242,7 +253,8 @@ void applyPositionPID(float dt, int motorIndex){
             saved_encoder_count[motorIndex] = encoderCount[motorIndex];
             first_saved_encoder_count[motorIndex] = encoderCount[motorIndex];
             motor_homing_time[motorIndex] = millis();
-        }else if (millis() - motor_homing_time[motorIndex] > 350 && (encoderCount[motorIndex] < first_saved_encoder_count[motorIndex]/2) ){
+        }else if (millis() - motor_homing_time[motorIndex] > 350 && (encoderCount[motorIndex] <= first_saved_encoder_count[motorIndex]/2) ){
+            setMotor(-255, motorIndex);
             if (abs(encoderCount[motorIndex] - saved_encoder_count[motorIndex]) == 0){
                 motor_homing[motorIndex] = false;
                 setMotor(0, motorIndex);
@@ -311,7 +323,7 @@ void find_home(int inside_task = 0){
     }
     while(motors_at_home < 4){
         if (inside_task){
-        vTaskDelay(pdMS_TO_TICKS(350));
+            vTaskDelay(pdMS_TO_TICKS(350));
         }else{
             delay(350);
         }
@@ -796,7 +808,10 @@ void setup(){
         pinMode(encoderPinsB[i], INPUT_PULLUP);
         pinMode(motorPinsA[i], OUTPUT);
         pinMode(motorPinsB[i], OUTPUT);
+        pinMode(motorPinsEnable[i], OUTPUT);
     }
+
+    setupMotorPWM();
 
     setupPCNT();
 
