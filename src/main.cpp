@@ -30,9 +30,8 @@ TaskHandle_t microROSTaskHandle = NULL;
 TaskHandle_t pidControlTaskHandle = NULL;
 
 // Mutex for shared resources
-SemaphoreHandle_t encoderMutex;
-SemaphoreHandle_t targetMutex;
-SemaphoreHandle_t servoMutex;
+SemaphoreHandle_t commandMutex;
+SemaphoreHandle_t idleMutex;
 
 int motorPinsA[4] = {15, 5, 4, 2};
 int motorPinsB[4] = {16, 23, 14, 19};
@@ -119,6 +118,10 @@ int before_going_up_encoder_count[4] = {0, 0, 0, 0};
 unsigned long last_time = 0;
 
 int homing_waiting = 0;
+int current_command = 0;
+int command_waiting = 0;
+bool system_idle = true;
+bool restart_requested = false;
 
 // Initialise PCNT units for X4 quadrature decoding on all 4 encoders.
 // Direction convention is identical to the former ISRs:
@@ -289,7 +292,6 @@ void apply_command(String command){
     for(int i=0; i<4; i++){
         motor_homing[i] = false;
     }
-    xSemaphoreTake(targetMutex, portMAX_DELAY);
     if (command[0] == 'p' || command[0] == 'u' || command[0] == 'm' || command[0] == 'd'){
         for(int i=0; i<4; i++){
             if (command[i] == 'u'){
@@ -305,7 +307,6 @@ void apply_command(String command){
     }else{
         target_encoder_count[(int)command[0]-48] = command.substring(1).toInt();
     }
-    xSemaphoreGive(targetMutex);
 }
 void find_home(int inside_task = 0){
     homed = false;
@@ -342,18 +343,15 @@ void find_home(int inside_task = 0){
     }
     homed = true;
 }
-
-// Callback function for /forward/n20 topic
-void n20_callback(const void *msgin) {
-    const std_msgs__msg__Int32 *msg = (const std_msgs__msg__Int32 *)msgin;
-    int value = msg->data;
+void process_command(int value){
     if (!value){
         homing_waiting = 1;
         return;
     }
     if(value ==20){
-        ESP.restart();
-        return;}
+        restart_requested = true;
+        return;
+    }
     // 1 means down, 2 means middle, and 3 means up, ordered from MSB to LSB
     String command = "";
     going_down = false;
@@ -371,9 +369,23 @@ void n20_callback(const void *msgin) {
         }
         value /= 10;
     }
-    if (!homing_waiting){
+    if (!homing_waiting){ 
         apply_command(command);
     }
+}
+
+void store_command(int value){
+    xSemaphoreTake(commandMutex, portMAX_DELAY);
+    command_waiting = 1;
+    current_command = value;
+    xSemaphoreGive(commandMutex);
+}
+
+// Callback function for /forward/n20 topic
+void n20_callback(const void *msgin) {
+    const std_msgs__msg__Int32 *msg = (const std_msgs__msg__Int32 *)msgin;
+    int value = msg->data;
+    store_command(value);
 }
 
 // Callback function for /forward/kabech topic
@@ -413,7 +425,9 @@ void idle_service_callback(const void *req, void *res) {
     std_srvs__srv__Trigger_Response *response = (std_srvs__srv__Trigger_Response *)res;
     
     // Check if system is idle
-    bool system_idle = homed && (( going_down && is_idle() ) || (!going_down && is_idle(7000)));
+    xSemaphoreTake(idleMutex, portMAX_DELAY);
+    response->success = system_idle;
+    xSemaphoreGive(idleMutex);
     
     // Set response success field
     response->success = system_idle;
@@ -421,7 +435,7 @@ void idle_service_callback(const void *req, void *res) {
     // Use static strings to avoid memory leaks - micro-ROS will handle these correctly
     static const char* idle_msg = "System is IDLE";
     static const char* busy_msg = "System is BUSY";
-    const char* msg = system_idle ? idle_msg : busy_msg;
+    const char* msg = response->success ? idle_msg : busy_msg;
     
     // Assign static string directly without malloc
     response->message.data = (char*)msg;
@@ -758,6 +772,17 @@ void pidControlTask(void *parameter) {
         float dt = fabs(currentTime - last_time) / 1000.0;
         last_time = currentTime;
 
+        xSemaphoreTake(commandMutex, portMAX_DELAY);
+        if (command_waiting) {
+            process_command(current_command);
+            command_waiting = 0;
+        }
+        xSemaphoreGive(commandMutex);
+
+        xSemaphoreTake(idleMutex, portMAX_DELAY);
+        system_idle = homed && (( going_down && is_idle() ) || (!going_down && is_idle(7000)));
+        xSemaphoreGive(idleMutex);
+
         if (homing_waiting){
             homing_waiting = 0;
             find_home(1);
@@ -770,11 +795,9 @@ void pidControlTask(void *parameter) {
 
         // Apply PID control for all 4 motors
         if (homed){
-            xSemaphoreTake(targetMutex, portMAX_DELAY);
             for (int i = 0; i < 4; i++) {
                 applyPositionPID(dt, i);
             }
-            xSemaphoreGive(targetMutex);
         }
         // test_with_serial();
         // Delay until next cycle
@@ -785,13 +808,6 @@ void pidControlTask(void *parameter) {
 void microros_setup(){
     Serial.println("Starting ESP32 back Control Node...");
     
-   
-    
-    if (encoderMutex == NULL || targetMutex == NULL || servoMutex == NULL) {
-        Serial.println("ERROR: Failed to create mutexes!");
-        while(1) { delay(100); }
-    }
-    
     set_microros_transports();
     Serial.println("✓ micro-ROS transport initialized");
     Serial.println("Connection will be handled by microROSTask...");
@@ -800,9 +816,8 @@ void microros_setup(){
 void setup(){
     Serial.begin(115200);
  // Create FreeRTOS mutexes for shared resource protection
-    encoderMutex = xSemaphoreCreateMutex();
-    targetMutex = xSemaphoreCreateMutex();
-    servoMutex = xSemaphoreCreateMutex();
+    commandMutex = xSemaphoreCreateMutex();
+    idleMutex = xSemaphoreCreateMutex();
     for(int i=0; i<4; i++){
         pinMode(encoderPinsA[i], INPUT_PULLUP);
         pinMode(encoderPinsB[i], INPUT_PULLUP);
@@ -838,7 +853,7 @@ void setup(){
         NULL,                   // Parameters
         2,                      // Priority (0-24, higher number = higher priority)
         &microROSTaskHandle,    // Task handle
-        1                       // Core ID (0 or 1)
+        0                       // Core ID (0 or 1)
     );
     
     // Create PID control task on Core 1 (medium priority)
