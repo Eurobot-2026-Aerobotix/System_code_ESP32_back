@@ -123,6 +123,8 @@ int command_waiting = 0;
 bool system_idle = false;
 bool restart_requested = false;
 
+int disconnection_counter = 0;
+
 // Initialise PCNT units for X4 quadrature decoding on all 4 encoders.
 // Direction convention is identical to the former ISRs:
 //   encoderA_ISR: count += (A == B) ? +1 : -1   =>  CH0: hctrl=KEEP lctrl=REVERSE pos=INC neg=DEC
@@ -507,7 +509,7 @@ void test_with_serial(){
 // ============================================================================
 bool pingAgent() {
     // Ping the agent to check if it's still alive
-    rcl_ret_t ping_result = rmw_uros_ping_agent(100, 1); // 100ms timeout, 1 attempt
+    rcl_ret_t ping_result = rmw_uros_ping_agent(200, 1); // 200ms timeout, 1 attempt
     return ping_result == RCL_RET_OK;
 }
 
@@ -699,6 +701,7 @@ void microROSTask(void *parameter) {
         switch (agent_status) {
             case AGENT_WAIT:
             case AGENT_DISCONNECTED:
+                disconnection_counter++;
                 Serial.println("[STATUS] Waiting for agent...");
                 agent_status = AGENT_WAIT;
                 
@@ -731,7 +734,7 @@ void microROSTask(void *parameter) {
                 
                 // Publish status every 3 second
                 if (millis() - last_status_publish > STATUS_PUBLISH_INTERVAL) {
-                    status_msg.data = 1;
+                    status_msg.data = disconnection_counter;
                     rcl_publish(&status_publisher, &status_msg, NULL);
                     last_status_publish = millis();
                 }
@@ -787,6 +790,7 @@ void pidControlTask(void *parameter) {
             homing_waiting = 0;
             find_home(1);
             apply_command("mmmm");
+            xLastWakeTime = xTaskGetTickCount();
             continue;
         }
 
@@ -860,7 +864,7 @@ void setup(){
     xTaskCreatePinnedToCore(
         pidControlTask,         // Task function
         "pidControlTask",       // Task name
-        4096,                   // Stack size (bytes)
+        8192,                   // Stack size (bytes)
         NULL,                   // Parameters
         1,                      // Priority
         &pidControlTaskHandle,  // Task handle
