@@ -55,7 +55,7 @@ int middle_servo_pos_0 = 46;
 int middle_servo_pos_1 = 125;
 
 int left_servo_pos_0 = 9;
-int left_servo_pos_1 = 148;
+int left_servo_pos_1 = 146;
 
 int right_servo_pos_0 = 161;
 int right_servo_pos_1 = 25;
@@ -342,7 +342,6 @@ void find_home(int inside_task = 0){
                 motor_homed[i] = true;
                 setMotor(0, i);
                 resetEncoder(i);
-                Serial.println("Motor " + String(i) + " homed.");
             }else{
                 saved_encoder_counts[i] = encoderCount[i];
             }
@@ -436,8 +435,6 @@ void idle_service_callback(const void *req, void *res) {
     response->success = system_idle;
     xSemaphoreGive(idleMutex);
     
-    // Set response success field
-    response->success = system_idle;
     
     // Use static strings to avoid memory leaks - micro-ROS will handle these correctly
     static const char* idle_msg = "System is IDLE";
@@ -485,7 +482,6 @@ void test_with_serial(){
             if (servo_id >= 0 && servo_id < 3) {
                 int angle = command.substring(2).toInt();
 
-                // OPTION 1: using array
                 if (servo_id == 1){
                     left_servo.write(angle);
                     Serial.print("moving left servo to angle ");
@@ -499,9 +495,6 @@ void test_with_serial(){
                     Serial.print("moving right servo to angle ");
                     Serial.println(angle);
                 }
-
-                // OPTION 2: using function
-                // setServoAngle(servo_id, angle);
             }
         }else{
             target_encoder_count[(int)command[0]-48] = command.substring(1).toInt();
@@ -519,8 +512,6 @@ bool pingAgent() {
 }
 
 void cleanupMicroROS() {
-    Serial.println("Cleaning up micro-ROS resources...");
-    
     // Clean up executor
     rclc_executor_fini(&executor);
     
@@ -538,29 +529,21 @@ void cleanupMicroROS() {
     // Clean up node and support
     rcl_node_fini(&node);
     rclc_support_fini(&support);
-    
-    Serial.println("✓ Cleanup complete");
 }
 
 bool initializeMicroROS() {
-    Serial.println("Initializing micro-ROS...");
-    
     allocator = rcl_get_default_allocator();
     rcl_ret_t ret = rclc_support_init(&support, 0, NULL, &allocator);
     
     if (ret != RCL_RET_OK) {
-        Serial.println("✗ Failed to initialize support");
         return false;
     }
-    Serial.println("✓ Support initialized");
     
     ret = rclc_node_init_default(&node, "esp32_back_node", "", &support);
     if (ret != RCL_RET_OK) {
-        Serial.println("✗ Failed to init node");
         rclc_support_fini(&support);
         return false;
     }
-    Serial.println("✓ Node created");
 
     // Create QoS profile with reliable settings
     rcl_subscription_options_t sub_opts = rcl_subscription_get_default_options();
@@ -576,12 +559,10 @@ bool initializeMicroROS() {
         "/back/n20",
         &sub_opts.qos);
     if (ret != RCL_RET_OK) {
-        Serial.println("✗ Failed to create n20 subscription");
         rcl_node_fini(&node);
         rclc_support_fini(&support);
         return false;
     }
-    Serial.println("✓ N20 subscription created");
 
     ret = rclc_subscription_init(
         &kabech_subscriber,
@@ -590,13 +571,11 @@ bool initializeMicroROS() {
         "/back/kabech",
         &sub_opts.qos);
     if (ret != RCL_RET_OK) {
-        Serial.println("✗ Failed to create kabech subscription");
         rcl_subscription_fini(&n20_subscriber, &node);
         rcl_node_fini(&node);
         rclc_support_fini(&support);
         return false;
     }
-    Serial.println("✓ Kabech subscription created");
 
     ret = rclc_subscription_init(
         &dawer_subscriber,
@@ -605,14 +584,12 @@ bool initializeMicroROS() {
         "/back/dawer",
         &sub_opts.qos);
     if (ret != RCL_RET_OK) {
-        Serial.println("✗ Failed to create dawer subscription");
         rcl_subscription_fini(&n20_subscriber, &node);
         rcl_subscription_fini(&kabech_subscriber, &node);
         rcl_node_fini(&node);
         rclc_support_fini(&support);
         return false;
     }
-    Serial.println("✓ Dawer subscription created");
 
     // Create publisher with reliable QoS
     rcl_publisher_options_t pub_opts = rcl_publisher_get_default_options();
@@ -627,7 +604,6 @@ bool initializeMicroROS() {
         "/back/status",
         &pub_opts.qos);
     if (ret != RCL_RET_OK) {
-        Serial.println("✗ Failed to create status publisher");
         rcl_subscription_fini(&n20_subscriber, &node);
         rcl_subscription_fini(&kabech_subscriber, &node);
         rcl_subscription_fini(&dawer_subscriber, &node);
@@ -635,7 +611,6 @@ bool initializeMicroROS() {
         rclc_support_fini(&support);
         return false;
     }
-    Serial.println("✓ Status publisher created");
 
     // Create service options with reliable QoS
     rcl_service_options_t svc_opts = rcl_service_get_default_options();
@@ -651,7 +626,6 @@ bool initializeMicroROS() {
         "/back/isIDLE",
         &svc_opts.qos);
     if (ret != RCL_RET_OK) {
-        Serial.println("✗ Failed to create isIDLE service");
         rcl_subscription_fini(&n20_subscriber, &node);
         rcl_subscription_fini(&kabech_subscriber, &node);
         rcl_subscription_fini(&dawer_subscriber, &node);
@@ -659,12 +633,10 @@ bool initializeMicroROS() {
         rclc_support_fini(&support);
         return false;
     }
-    Serial.println("✓ isIDLE service created");
 
     // Create executor (4 handles: 3 subscriptions + 1 service)
     ret = rclc_executor_init(&executor, &support.context, 4, &allocator);
     if (ret != RCL_RET_OK) {
-        Serial.println("✗ Failed to init executor");
         rcl_service_fini(&idle_service, &node);
         rcl_subscription_fini(&n20_subscriber, &node);
         rcl_subscription_fini(&kabech_subscriber, &node);
@@ -673,7 +645,6 @@ bool initializeMicroROS() {
         rclc_support_fini(&support);
         return false;
     }
-    Serial.println("✓ Executor initialized");
     
     rclc_executor_add_subscription(&executor, &n20_subscriber, &n20_msg,
                                     &n20_callback, ON_NEW_DATA);
@@ -683,8 +654,7 @@ bool initializeMicroROS() {
                                     &dawer_callback, ON_NEW_DATA);
     rclc_executor_add_service(&executor, &idle_service, &idle_req, &idle_res,
                               &idle_service_callback);
-    
-    Serial.println("✓✓✓ ESP32 Back Node Ready! ✓✓✓");
+
     return true;
 }
 
@@ -692,8 +662,6 @@ bool initializeMicroROS() {
 // FreeRTOS Task: micro-ROS Communication with Advanced Connection Management
 // ============================================================================
 void microROSTask(void *parameter) {
-    Serial.println("micro-ROS Task started on Core: " + String(xPortGetCoreID()));
-    
     unsigned long last_ping_time = 0;
     unsigned long last_status_publish = 0;
     const unsigned long PING_INTERVAL = 500; // Ping every 0.5 second
@@ -707,12 +675,10 @@ void microROSTask(void *parameter) {
             case AGENT_WAIT:
             case AGENT_DISCONNECTED:
                 disconnection_counter++;
-                Serial.println("[STATUS] Waiting for agent...");
                 agent_status = AGENT_WAIT;
                 
                 // Check if agent is available
                 if (pingAgent()) {
-                    Serial.println("[STATUS] Agent detected! Attempting connection...");
                     agent_status = AGENT_AVAILABLE;
                 } else {
                     vTaskDelay(pdMS_TO_TICKS(RECONNECT_DELAY));
@@ -725,15 +691,19 @@ void microROSTask(void *parameter) {
                     agent_status = AGENT_CONNECTED;
                     last_ping_time = millis();
                     last_status_publish = millis();
-                    Serial.println("[STATUS] Successfully connected to agent");
                 } else {
-                    Serial.println("[STATUS] Connection failed, retrying...");
                     agent_status = AGENT_WAIT;
                     vTaskDelay(pdMS_TO_TICKS(RECONNECT_DELAY));
                 }
                 break;
                 
             case AGENT_CONNECTED:
+                if (restart_requested) {
+                    cleanupMicroROS();
+                    vTaskDelay(pdMS_TO_TICKS(100));
+                    ESP.restart();
+                }
+
                 // Spin executor to process messages
                 rcl_ret_t ret = rclc_executor_spin_some(&executor, RCL_MS_TO_NS(10));
                 
@@ -747,12 +717,8 @@ void microROSTask(void *parameter) {
                 // Periodic ping to check agent health
                 if (millis() - last_ping_time > PING_INTERVAL) {
                     if (!pingAgent()) {
-                        Serial.println("[STATUS] Agent ping failed! Connection lost.");
                         cleanupMicroROS();
                         agent_status = AGENT_DISCONNECTED;
-                    } else {
-                        // Uncomment for verbose ping status
-                        // Serial.println("[STATUS] Agent ping OK");
                     }
                     last_ping_time = millis();
                 }
@@ -768,8 +734,6 @@ void microROSTask(void *parameter) {
 // FreeRTOS Task: PID Control Loop
 // ============================================================================
 void pidControlTask(void *parameter) {
-    Serial.println("PID Control Task started on Core: " + String(xPortGetCoreID()));
-    
     unsigned long last_time = millis();
     TickType_t xLastWakeTime = xTaskGetTickCount();
     const TickType_t xFrequency = pdMS_TO_TICKS(10); // 100Hz PID update
@@ -813,6 +777,11 @@ void pidControlTask(void *parameter) {
             continue;
         }
 
+        if (dt <= 0.0f) {
+            vTaskDelayUntil(&xLastWakeTime, xFrequency);
+            continue;
+        }
+
         // Update encoder counts from PCNT hardware counters
         readEncoderCounts();
 
@@ -829,11 +798,7 @@ void pidControlTask(void *parameter) {
 }
 
 void microros_setup(){
-    Serial.println("Starting ESP32 back Control Node...");
-    
     set_microros_transports();
-    Serial.println("✓ micro-ROS transport initialized");
-    Serial.println("Connection will be handled by microROSTask...");
 }
 
 void setup(){
@@ -857,10 +822,7 @@ void setup(){
     setupServos();
 
     microros_setup();
-    
-    Serial.println("tryna home");
     find_home();
-    Serial.println("Homing complete.");
 
     apply_command("mmmm");
     
@@ -891,14 +853,9 @@ void setup(){
     );
     
     if (microROSTaskHandle == NULL || pidControlTaskHandle == NULL) {
-        Serial.println("ERROR: Failed to create FreeRTOS tasks!");
         while(1) { delay(100); }
     }
-    
-    Serial.println("✓ FreeRTOS tasks created successfully");
-    Serial.println("✓ micro-ROS task on Core 0 (Priority 2)");
-    Serial.println("✓ PID Control task on Core 1 (Priority 1)");
-    Serial.println("=== System ready ===");
+
     setup_completed = true;
 }
 void loop(){
