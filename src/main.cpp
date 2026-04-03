@@ -106,7 +106,7 @@ int pwm_output[4] = {0, 0, 0, 0};
 
 long upPosition[4] = {0, 0, 0, 0};
 long midPosition[4] = {2250, 2210, 2000, 2080};
-long preparePosition[4] = {7250, 7100, 7300, 6900};
+long preparePosition[4] = {6500, 6500, 6500, 6200};
 long downPosition[4] = {8500, 8500, 8500, 8250};
 bool motor_homing[4] = {false, false, false, false};
 int motor_homing_time[4] = {0, 0, 0, 0};
