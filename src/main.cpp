@@ -57,11 +57,11 @@ int middle_servo_pos_1 = 125;
 
 int left_servo_pos_0 = 9;
 int left_servo_pos_1 = 146;
-int left_servo_pos_2 = 106;
+int left_servo_pos_2 = 115;
 
 int right_servo_pos_0 = 161;
 int right_servo_pos_1 = 25;
-int right_servo_pos_2 = 65;
+int right_servo_pos_2 = 57;
 
 int minPWM[4] = {80, 80, 80, 80};
 
@@ -107,9 +107,9 @@ long target_encoder_count[4] = {0, 0, 0, 0};
 int pwm_output[4] = {0, 0, 0, 0};
 
 long upPosition[4] = {0, 0, 0, 0};
-long midPosition[4] = {2250, 2210, 2000, 2080};
-long preparePosition[4] = {6500, 6500, 6500, 6200};
-long downPosition[4] = {8500, 8500, 8500, 8250};
+long midPosition[4] = {2500, 2450, 2450, 2300};
+long preparePosition[4] = {6500, 6400, 6500, 6150};
+long downPosition[4] = {7600, 7600, 7500, 7200};
 bool motor_homing[4] = {false, false, false, false};
 int motor_homing_time[4] = {0, 0, 0, 0};
 int saved_encoder_count[4] = {0, 0, 0, 0};
