@@ -56,11 +56,11 @@ int middle_servo_pos_0 = 46;
 int middle_servo_pos_1 = 125;
 
 int left_servo_pos_0 = 9;
-int left_servo_pos_1 = 146;
+int left_servo_pos_1 = 148;
 int left_servo_pos_2 = 115;
 
 int right_servo_pos_0 = 161;
-int right_servo_pos_1 = 25;
+int right_servo_pos_1 = 28;
 int right_servo_pos_2 = 57;
 
 int minPWM[4] = {80, 80, 80, 80};
